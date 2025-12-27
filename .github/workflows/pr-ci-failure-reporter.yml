@@ -1,0 +1,44 @@
+name: PR CI Failure Reporter
+
+on:
+  workflow_run:
+    workflows:
+      - CI
+    types: [completed]
+
+jobs:
+  comment-on-failure:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comment on associated PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = github.event.workflow_run;
+            const url = run.html_url;
+            const headBranch = run.head_branch;
+            const workflowName = run.name;
+
+            // Find open PRs whose head branch matches this run
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open'
+            });
+
+            if (!prs.data || prs.data.length === 0) {
+              core.info(`No open PRs found for branch ${headBranch}`);
+              return;
+            }
+
+            for (const pr of prs.data) {
+              const body = `⚠️ **CI Failure**\n\nWorkflow **${workflowName}** failed for branch **${headBranch}**.\n\nSee workflow run: ${url}`;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+            }

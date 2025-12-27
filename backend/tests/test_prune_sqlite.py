@@ -28,9 +28,12 @@ def create_sample_db(path: str):
 def run_prune_script(db_path: str):
     env = os.environ.copy()
     env['DATABASE_URL'] = f'sqlite:///{db_path}'
-    # Execute the prune script via subprocess
-    subprocess.check_call(["python", "scripts/prune_sqlite.py"], env=env)
-
+    # Execute the prune script via subprocess; resolve path relative to repo root
+    repo_root = Path(__file__).resolve().parents[2]
+    script_path = repo_root / 'backend' / 'scripts' / 'prune_sqlite.py'
+    # Ensure that the backend package is importable by setting PYTHONPATH to backend
+    env['PYTHONPATH'] = str(repo_root / 'backend')
+    subprocess.check_call(["python", str(script_path)], env=env)
 
 def test_prune_creates_pruned_db(tmp_path: Path):
     orig = tmp_path / 'pos_inventory.db'

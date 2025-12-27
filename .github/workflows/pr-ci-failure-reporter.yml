@@ -33,8 +33,31 @@ jobs:
               return;
             }
 
+            // Fetch jobs for the workflow run to include failed job names/links
+            const jobsResp = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: run.id,
+            });
+
+            const jobs = jobsResp.data.jobs || [];
+            const failedJobs = jobs.filter(j => j.conclusion && j.conclusion !== 'success');
+
             for (const pr of prs.data) {
-              const body = `⚠️ **CI Failure**\n\nWorkflow **${workflowName}** failed for branch **${headBranch}**.\n\nSee workflow run: ${url}`;
+              let body = `⚠️ **CI Failure**\n\nWorkflow **${workflowName}** failed for branch **${headBranch}**.\n\nSee workflow run: ${url}\n\n`;
+
+              if (failedJobs.length > 0) {
+                body += '**Failed jobs:**\n';
+                for (const j of failedJobs) {
+                  // job.html_url may not always be present; fall back to run url with job id
+                  const jobUrl = j.html_url || `${url}/jobs/${j.id}`;
+                  body += `- [${j.name}](${jobUrl}) — ${j.conclusion}\n`;
+                }
+                body += '\n';
+              }
+
+              body += 'If you need me to fetch logs or retry the run, tell me and I can do that.';
+
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

@@ -24,15 +24,15 @@ This checklist outlines the phased plan to: secure credentials in environment fi
   - Acceptance: `init_db.py` creates or updates `superadmin` and repository no longer contains literal default passwords in code.
 
 ## Phase 4 — Postgres Integration & Migrations 🐘
-- [ ] Ensure `DATABASE_URL` can point to PostgreSQL and document required env vars
-- [ ] Update `alembic.ini` and `alembic/env.py` to prefer `DATABASE_URL` from environment (already supported, verify in CI and Dockerfiles)
-- [ ] Create migration and test migration workflows for Postgres
+- [x] Ensure `DATABASE_URL` can point to PostgreSQL and document required env vars
+- [x] Update `alembic.ini` and `alembic/env.py` to prefer `DATABASE_URL` from environment (already supported, verify in CI and Dockerfiles)
+- [x] Create migration and test migration workflows for Postgres (CI runs Alembic and integration migration test added)
 - Acceptance: App can run using Postgres by setting `DATABASE_URL` and migrations apply successfully.
 
 ## Phase 5 — Clean SQLite for Offline (local device) 🧹
 - [x] Provide a lightweight script to sanitize a device-local SQLite DB, retaining only the default `superadmin` user (with `must_change_password=True`) and removing sensitive production artifacts
   - Implementation: `scripts/prune_sqlite.py` creates a pruned sqlite DB (or replaces existing DB with `--replace`) and seeds the `superadmin` from env.
-- [ ] Optionally, provide a CLI command like `posctl prune-sqlite --keep-superadmin` or similar
+- [x] Optionally, provide a CLI command like `posctl prune-sqlite --keep-superadmin` or similar (added `scripts/posctl.py`)
 - Acceptance: Running the cleanup results in a minimal DB with only essential tables and the `superadmin` user and no secrets.
 
 ## Phase 6 — Offline-first & Sync Strategy ⚡️
@@ -47,8 +47,8 @@ This checklist outlines the phased plan to: secure credentials in environment fi
 - [x] Scaffold Flutter demo: add Drift DB schema, sync service, and minimal UI (`flutter_app/mobile/lib/db`, `sync`, `ui/sync_demo.dart`) ✅
 - [x] Add WorkManager dependency and initial background dispatcher (`sync/sync_background.dart`) — **in-progress**
 - [ ] Complete background sync scheduling, backoff, and persistence (WorkManager / background_fetch)
-- [ ] Implement conflict merge UI and admin force flow
-- [ ] Add integration tests for offline CRUD, queue persistence, and conflict handling
+- [in-progress] Implement conflict merge UI and admin force flow (scaffold added; UI + force action in progress)
+- [partial] Add integration tests for offline CRUD, queue persistence, and conflict handling (conflict + push/pull e2e added)
 - Acceptance: App remains fully usable offline (CRUD operations locally), and sync resumes without data loss when network becomes available.
 
 ### Phase 6b — Conflict helpers & client work (short-term)

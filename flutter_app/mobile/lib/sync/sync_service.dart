@@ -6,15 +6,19 @@ import 'package:drift/drift.dart';
 import '../db/app_database.dart';
 
 // Adjust to match your dev server (Android emulator uses 10.0.2.2 to reach host)
-const String serverBase =
+const String defaultServerBase =
     String.fromEnvironment('SERVER_BASE', defaultValue: 'http://10.0.2.2:8000');
 
 class SyncService {
   final dynamic db;
   final http.Client httpClient;
+  final String
+      serverBase; // instance-level server base so tests can override it
   static const Uuid _uuid = Uuid();
 
-  SyncService(this.db, {http.Client? httpClient}) : httpClient = httpClient ?? http.Client();
+  SyncService(this.db, {http.Client? httpClient, String? serverBase})
+      : httpClient = httpClient ?? http.Client(),
+        serverBase = serverBase ?? defaultServerBase;
 
   Future<String> enqueueCreateProduct(
       {required String name,
@@ -112,6 +116,39 @@ class SyncService {
       'applied': data['applied'] ?? [],
       'conflicts': data['conflicts'] ?? [],
       'id_map': idMap
+    };
+  }
+
+  /// Force-update a single resource on the server as superadmin (adds `_force: true`)
+  Future<Map<String, dynamic>> forceUpdate({
+    required String resourceType,
+    required int id,
+    required Map<String, dynamic> data,
+    String? jwtToken,
+  }) async {
+    final change = {
+      'resource_type': resourceType,
+      'operation': 'update',
+      'id': id,
+      'data': {...data, '_force': true},
+      'last_updated': DateTime.now().toIso8601String(),
+    };
+
+    final body = jsonEncode({'client_id': 'flutter-device', 'changes': [change]});
+    final headers = {'Content-Type': 'application/json'};
+    if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
+
+    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'), headers: headers, body: body);
+
+    if (res.statusCode != 200) {
+      throw Exception('Sync force update failed: ${res.statusCode} ${res.body}');
+    }
+
+    final dataResp = jsonDecode(res.body);
+    return {
+      'applied': dataResp['applied'] ?? [],
+      'conflicts': dataResp['conflicts'] ?? [],
+      'id_map': dataResp['id_map'] ?? {},
     };
   }
 

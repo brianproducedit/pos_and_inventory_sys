@@ -10,10 +10,11 @@ const String serverBase =
     String.fromEnvironment('SERVER_BASE', defaultValue: 'http://10.0.2.2:8000');
 
 class SyncService {
-  final AppDatabase db;
+  final dynamic db;
+  final http.Client httpClient;
   static const Uuid _uuid = Uuid();
 
-  SyncService(this.db);
+  SyncService(this.db, {http.Client? httpClient}) : httpClient = httpClient ?? http.Client();
 
   Future<String> enqueueCreateProduct(
       {required String name,
@@ -64,7 +65,7 @@ class SyncService {
     final headers = {'Content-Type': 'application/json'};
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
 
-    final res = await http.post(Uri.parse('$serverBase/api/sync/push'),
+    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'),
         headers: headers, body: body);
     if (res.statusCode != 200) {
       throw Exception('Sync push failed: ${res.statusCode} ${res.body}');
@@ -92,7 +93,8 @@ class SyncService {
                 orElse: () => MapEntry('', null))
             .key;
         if (tempId != '') {
-          final qItems = await db.getPendingChanges();
+          // Snapshot pending changes to avoid concurrent modification during deletions
+          final qItems = List.of(await db.getPendingChanges());
           for (final q in qItems) {
             try {
               final p = jsonDecode(q.payloadJson);
@@ -122,7 +124,7 @@ class SyncService {
         Uri.parse('$serverBase/api/sync/changes?since=$sinceIso&types=$types');
     final headers = <String, String>{};
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
-    final res = await http.get(uri, headers: headers);
+    final res = await httpClient.get(uri, headers: headers);
     if (res.statusCode != 200) {
       throw Exception('Sync pull failed: ${res.statusCode} ${res.body}');
     }

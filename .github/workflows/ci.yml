@@ -62,6 +62,8 @@ jobs:
           cd flutter_app/mobile
           flutter analyze
       - name: Run unit tests
+        env:
+          NO_PROXY: '127.0.0.1,localhost'
         run: |
           cd flutter_app/mobile
           flutter test --coverage

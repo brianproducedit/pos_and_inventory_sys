@@ -63,7 +63,8 @@ This checklist outlines the phased plan to: secure credentials in environment fi
 - [ ] Implement WorkManager periodic registration and manifest changes (in-progress)
 - [x] Add integration tests for sync flows (`test/e2e/sync_e2e_test.dart`) — **done**
 - [x] Push branch `feat/sync-offline` and create PR (https://github.com/brianproducedit/pos_and_inventory_sys/pull/new/feat/sync-offline) — **done**
-- [ ] Add CI job to run E2E (bring up backend container + run `flutter test`) — **in-progress**
+- [x] Add CI job to run E2E (bring up backend container + run `flutter test`) — **done**
+- [x] Add PR CI failure reporter workflow (comments on PRs when CI fails) — **done**
 - [ ] Plan Postgres migration CI job (planned)
 
 

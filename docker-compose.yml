@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:15-alpine}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: pos_inventory_db
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/pos_inventory_db
+      - SECRET_KEY=${SECRET_KEY:-devsecretkey}
+      - DEFAULT_SUPERADMIN_USERNAME=${DEFAULT_SUPERADMIN_USERNAME:-superadmin}
+      - DEFAULT_SUPERADMIN_PASSWORD=${DEFAULT_SUPERADMIN_PASSWORD}
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+
+volumes:
+  db_data:

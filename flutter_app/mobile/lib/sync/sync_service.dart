@@ -134,14 +134,19 @@ class SyncService {
       'last_updated': DateTime.now().toIso8601String(),
     };
 
-    final body = jsonEncode({'client_id': 'flutter-device', 'changes': [change]});
+    final body = jsonEncode({
+      'client_id': 'flutter-device',
+      'changes': [change]
+    });
     final headers = {'Content-Type': 'application/json'};
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
 
-    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'), headers: headers, body: body);
+    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'),
+        headers: headers, body: body);
 
     if (res.statusCode != 200) {
-      throw Exception('Sync force update failed: ${res.statusCode} ${res.body}');
+      throw Exception(
+          'Sync force update failed: ${res.statusCode} ${res.body}');
     }
 
     final dataResp = jsonDecode(res.body);

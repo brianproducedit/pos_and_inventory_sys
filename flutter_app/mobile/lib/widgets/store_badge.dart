@@ -1,0 +1,355 @@
+import 'package:flutter/material.dart';
+
+class StoreBadge extends StatelessWidget {
+  final Map<String, dynamic>? store;
+  final bool showLocation;
+  final bool compact;
+  final VoidCallback? onTap;
+
+  const StoreBadge({
+    super.key,
+    required this.store,
+    this.showLocation = true,
+    this.compact = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Treat null or id==0 as the 'All Stores' global view
+    if (store == null || store?['id'] == 0) {
+      return _buildAllStoresBadge(context);
+    }
+
+    final s = store!;
+    final name = (s['name'] ?? 'Unnamed Store').toString();
+    final location = s['location']?.toString();
+    final isActive = s['is_active'] == true;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 12,
+          vertical: compact ? 4 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: isActive
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+              : Theme.of(context).colorScheme.error.withOpacity(0.1),
+          border: Border.all(
+            color: isActive
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+                : Theme.of(context).colorScheme.error.withOpacity(0.3),
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Store Icon
+            Container(
+              width: compact ? 20 : 24,
+              height: compact ? 20 : 24,
+              decoration: BoxDecoration(
+                color: isActive
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.error,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(
+                Icons.store,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: compact ? 12 : 14,
+              ),
+            ),
+
+            const SizedBox(width: 6),
+
+            // Store Info
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Store Name
+                  Text(
+                    name,
+                    style: (compact
+                            ? Theme.of(context).textTheme.bodySmall
+                            : Theme.of(context).textTheme.bodyMedium)
+                        ?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: isActive
+                          ? Theme.of(context).colorScheme.onSurface
+                          : Theme.of(context)
+                              .colorScheme
+                              .onSurface
+                              .withOpacity(0.7),
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+
+                  // Store Location
+                  if (showLocation &&
+                      store!['location'] != null &&
+                      !compact) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      location!,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurface
+                                .withOpacity(0.6),
+                          ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ],
+
+                  // Status Indicator
+                  if (!isActive) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      'Inactive',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontSize: compact ? 8 : 10,
+                        fontStyle: FontStyle.italic,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            // Tap indicator
+            if (onTap != null) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.keyboard_arrow_right,
+                size: compact ? 14 : 16,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ignore: unused_element
+  Widget _buildEmptyBadge(BuildContext context) {
+    // Kept for backward compatibility: show a subtle empty badge
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 12,
+        vertical: compact ? 4 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withOpacity(0.5),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.store_outlined,
+            size: compact ? 16 : 20,
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'No Store Selected',
+            style: (compact
+                    ? Theme.of(context).textTheme.bodySmall
+                    : Theme.of(context).textTheme.bodyMedium)
+                ?.copyWith(
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAllStoresBadge(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 8 : 12,
+          vertical: compact ? 4 : 6,
+        ),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: compact ? 20 : 24,
+              height: compact ? 20 : 24,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Icon(
+                Icons.language,
+                color: Theme.of(context).colorScheme.onPrimary,
+                size: compact ? 12 : 14,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                'Viewing: All Stores',
+                style: (compact
+                        ? Theme.of(context).textTheme.bodySmall
+                        : Theme.of(context).textTheme.bodyMedium)
+                    ?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+            if (onTap != null) ...[
+              const SizedBox(width: 4),
+              Icon(
+                Icons.keyboard_arrow_right,
+                size: compact ? 14 : 16,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Compact version for app bars and headers
+class StoreIndicator extends StatelessWidget {
+  final Map<String, dynamic>? store;
+
+  const StoreIndicator({
+    super.key,
+    required this.store,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Treat null or id==0 as 'All Stores'
+    if (store == null || store?['id'] == 0) {
+      // Show explicit indicator for 'All Stores' (global view)
+      return Semantics(
+        label: 'Viewing All Stores',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Icon(
+                  Icons.language,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  size: 12,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Viewing: All Stores',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final s = store!;
+    final name = (s['name'] ?? 'Unnamed Store').toString();
+    final isActive = s['is_active'] == true;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isActive
+              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
+              : Theme.of(context).colorScheme.error.withOpacity(0.3),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              color: isActive
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.error,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Icon(
+              Icons.store,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 12,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              name,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

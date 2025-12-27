@@ -22,14 +22,17 @@ class SyncConflictDialog extends StatelessWidget {
         children: [
           Text('Server value (preview):'),
           const SizedBox(height: 8),
-          Text(serverData.toString(), style: Theme.of(context).textTheme.bodySmall),
+          Text(serverData.toString(),
+              style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 12),
           const Text('Choose how to resolve:'),
         ],
       ),
       actions: [
-        TextButton(onPressed: onAcceptServer, child: const Text('Accept server')),
-        ElevatedButton(onPressed: onForce, child: const Text('Force (admin only)')),
+        TextButton(
+            onPressed: onAcceptServer, child: const Text('Accept server')),
+        ElevatedButton(
+            onPressed: onForce, child: const Text('Force (admin only)')),
       ],
     );
   }

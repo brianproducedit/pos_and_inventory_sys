@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile/sync/sync_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeQueueItem {
   final int id;
@@ -28,8 +29,22 @@ class _FakeDb {
     return 1;
   }
 
-  Future<int> insertProduct(Map<String, dynamic> data) async {
-    insertedProducts.add(data);
+  Future<int> insertProduct(dynamic data) async {
+    // Accept either Map or a ProductsCompanion
+    if (data is Map<String, dynamic>) {
+      insertedProducts.add(data);
+    } else {
+      // Try to extract the name/price/stock fields if it's a companion
+      try {
+        final name = (data as dynamic).name?.value as String? ?? '';
+        final price = (data as dynamic).price?.value as double? ?? 0.0;
+        final stock = (data as dynamic).stockQuantity?.value as int? ?? 0;
+        insertedProducts
+            .add({'name': name, 'price': price, 'stock_quantity': stock});
+      } catch (_) {
+        insertedProducts.add({'raw': data.toString()});
+      }
+    }
     return 1;
   }
 }
@@ -51,11 +66,15 @@ void main() {
 
     final mockClient = MockClient((request) async {
       if (request.url.path.endsWith('/api/sync/push')) {
-        return http.Response(jsonEncode({
-          'applied': [ {'operation': 'create', 'id': 101} ],
-          'id_map': { 'tmp-1': 101 },
-          'conflicts': []
-        }), 200);
+        return http.Response(
+            jsonEncode({
+              'applied': [
+                {'operation': 'create', 'id': 101}
+              ],
+              'id_map': {'tmp-1': 101},
+              'conflicts': []
+            }),
+            200);
       }
       return http.Response('{}', 200);
     });
@@ -71,21 +90,32 @@ void main() {
   test('pullChanges inserts server products', () async {
     final mockClient = MockClient((request) async {
       if (request.url.path.endsWith('/api/sync/changes')) {
-        return http.Response(jsonEncode({
-          'changes': {
-            'products': [
-              {'data': {'name': 'Server Product', 'price': 9.99, 'stock_quantity': 10, 'store_id': 1}}
-            ]
-          }
-        }), 200);
+        return http.Response(
+            jsonEncode({
+              'changes': {
+                'products': [
+                  {
+                    'data': {
+                      'name': 'Server Product',
+                      'price': 9.99,
+                      'stock_quantity': 10,
+                      'store_id': 1
+                    }
+                  }
+                ]
+              }
+            }),
+            200);
       }
       return http.Response('{}', 200);
     });
 
     final fakeDb = _FakeDb();
+    SharedPreferences.setMockInitialValues({});
     final svc = SyncService(fakeDb as dynamic, httpClient: mockClient);
 
-    final prods = await svc.pullChanges(since: DateTime.fromMillisecondsSinceEpoch(0));
+    final prods =
+        await svc.pullChanges(since: DateTime.fromMillisecondsSinceEpoch(0));
     expect(prods, isNotEmpty);
     expect(fakeDb.insertedProducts.length, 1);
     expect(fakeDb.insertedProducts.first['name'], 'Server Product');

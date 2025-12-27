@@ -1,0 +1,817 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+// import 'package:flutter/foundation.dart';
+import 'package:mobile/widgets/low_stock_panel.dart';
+import 'package:provider/provider.dart';
+import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/widgets/app_bottom_nav.dart';
+import 'package:mobile/widgets/store_quick_action.dart';
+import 'package:mobile/widgets/store_badge.dart';
+import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/screens/edit_product_screen.dart';
+
+class InventoryScreen extends StatefulWidget {
+  const InventoryScreen({super.key});
+
+  @override
+  State<InventoryScreen> createState() => _InventoryScreenState();
+}
+
+class _InventoryScreenState extends State<InventoryScreen> {
+  // Bulk selection state for products
+  final Set<int> _selectedProductIds = {};
+  bool _isBulkActionLoading = false;
+
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  Timer? _searchDebounce;
+
+  Future<void> _loadProducts() async {
+    final inventoryProvider = context.read<InventoryProvider>();
+    final authProvider = context.read<AuthProvider>();
+
+    if (authProvider.role == 'superadmin') {
+      await inventoryProvider.loadAllProducts(
+          includeInactive: inventoryProvider.showInactiveProducts);
+    } else {
+      await inventoryProvider.loadProducts();
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Load products when screen initializes
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final inventoryProvider = context.read<InventoryProvider>();
+      final authProvider = context.read<AuthProvider>();
+      final storeProvider = context.read<StoreProvider>();
+
+      // Ensure store provider is initialized and pass to inventory provider
+      try {
+        if (!storeProvider.isInitialized) {
+          // Start init in background so UI doesn't block and tests don't get timer leaks
+          unawaited(storeProvider.initialize());
+        }
+      } catch (e) {
+        debugPrint('InventoryScreen: store init skipped: $e');
+      }
+      inventoryProvider.setAuthProvider(authProvider);
+      inventoryProvider.setStoreProvider(storeProvider);
+
+      // Load products based on user role
+      if (authProvider.role == 'superadmin') {
+        // Superadmin can see all products across stores
+        inventoryProvider.loadAllProducts(includeInactive: false);
+      } else {
+        // Regular users see products filtered by current store
+        inventoryProvider.loadProducts();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _confirmBulkToggleProductStatus(bool activate) async {
+    final inventoryProvider = context.read<InventoryProvider>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Change Product Status'),
+        content: Text(
+            'Are you sure you want to ${activate ? 'activate' : 'deactivate'} ${_selectedProductIds.length} selected products?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    setState(() => _isBulkActionLoading = true);
+    try {
+      for (final id in _selectedProductIds.toList()) {
+        await inventoryProvider.updateProductStatus(id, activate);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bulk status update completed')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error performing bulk update: $e')));
+      }
+    } finally {
+      setState(() {
+        _isBulkActionLoading = false;
+        _selectedProductIds.clear();
+      });
+    }
+  }
+
+  Future<void> _confirmBulkDeleteProducts() async {
+    final inventoryProvider = context.read<InventoryProvider>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Products'),
+        content: Text(
+            'Are you sure you want to permanently delete ${_selectedProductIds.length} selected products? This action cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    setState(() => _isBulkActionLoading = true);
+    try {
+      for (final id in _selectedProductIds.toList()) {
+        await inventoryProvider.deleteProduct(id);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Selected products deleted')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting products: $e')));
+      }
+    } finally {
+      setState(() {
+        _isBulkActionLoading = false;
+        _selectedProductIds.clear();
+      });
+    }
+  }
+
+  void _clearProductSelection() {
+    setState(() => _selectedProductIds.clear());
+  }
+
+  /// Open the product referenced by a low-stock alert.
+  /// Attempts to resolve a full product map from current products by id or name,
+  /// falls back to a minimal product map if necessary, then navigates to
+  /// the edit product screen after closing the alert dialog.
+  void _openProductFromAlert(Map<String, dynamic> alert) {
+    final inventoryProvider = context.read<InventoryProvider>();
+
+    final int? productId = (alert['id'] ?? alert['product_id']) as int?;
+
+    Map<String, dynamic>? product;
+
+    if (productId != null) {
+      try {
+        product =
+            inventoryProvider.products.firstWhere((p) => p['id'] == productId);
+      } catch (_) {
+        product = null;
+      }
+    }
+
+    if (product == null) {
+      final name = alert['product_name'] as String?;
+      if (name != null) {
+        try {
+          product = inventoryProvider.products
+              .firstWhere((p) => (p['name'] ?? '') == name);
+        } catch (_) {}
+      }
+    }
+
+    product ??= {
+      'id': productId,
+      'name': alert['product_name'] ?? 'Product',
+      'price': 0.0,
+      'stock_quantity': alert['stock_quantity'] ?? 0,
+      'is_active': true,
+    };
+
+    // Close dialog then navigate to edit product screen
+    Navigator.of(context).pop();
+    Future.microtask(() => Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => EditProductScreen(product: product!))));
+  }
+
+  /// Resolve a display name for a low-stock alert by preferring the live
+  /// product name (matched by id or exact name) and falling back to the
+  /// alert's provided name.
+  String _displayNameForAlert(Map<String, dynamic> alert) {
+    final inventoryProvider = context.read<InventoryProvider>();
+    final int? pid = (alert['id'] ?? alert['product_id']) as int?;
+
+    if (pid != null) {
+      try {
+        final p = inventoryProvider.products.firstWhere((p) => p['id'] == pid);
+        return p['name'] ?? alert['product_name'] ?? 'Product';
+      } catch (_) {}
+    }
+
+    final String? name = alert['product_name'] as String?;
+    if (name != null && name.isNotEmpty) {
+      // Try to match by name to prefer current product list name
+      try {
+        final p = inventoryProvider.products
+            .firstWhere((p) => (p['name'] ?? '') == name);
+        return p['name'] ?? name;
+      } catch (_) {}
+      return name;
+    }
+
+    return 'Product';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Access Denied')),
+        body: const Center(
+            child: Text('You do not have permission to access this screen.')),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Inventory'),
+        iconTheme: const IconThemeData(color: Colors.white),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(50),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                StoreIndicator(
+                    store: context.watch<StoreProvider>().currentStore),
+                Row(
+                  children: [
+                    if (context.watch<AuthProvider>().role == 'superadmin' ||
+                        context.watch<AuthProvider>().role == 'admin')
+                      const StoreQuickAction(),
+                    IconButton(
+                      icon: const Icon(Icons.visibility, color: Colors.white),
+                      tooltip: inventoryProvider.showInactiveProducts
+                          ? 'Hide inactive'
+                          : 'Show inactive',
+                      onPressed: () =>
+                          inventoryProvider.toggleShowInactiveProducts(),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      onPressed: _loadProducts,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.add, color: Colors.white),
+                      onPressed: () {
+                        Navigator.of(context).pushNamed('/add_product');
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      body: inventoryProvider.isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : inventoryProvider.errorMessage != null
+              ? Center(child: Text(inventoryProvider.errorMessage!))
+              : inventoryProvider.products.isEmpty
+                  ? const Center(child: Text('No products found'))
+                  : Column(
+                      children: [
+                        // Bulk action bar (visible when there are selections)
+                        if (_selectedProductIds.isNotEmpty)
+                          Container(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            child:
+                                LayoutBuilder(builder: (context, constraints) {
+                              return Wrap(
+                                alignment: WrapAlignment.start,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: constraints.maxWidth * 0.22),
+                                    child: Text(
+                                      '${_selectedProductIds.length} selected',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                        maxWidth: constraints.maxWidth * 0.78),
+                                    child: SingleChildScrollView(
+                                      scrollDirection: Axis.horizontal,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.max,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.end,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 24,
+                                            height: 24,
+                                            child: _isBulkActionLoading
+                                                ? const CircularProgressIndicator(
+                                                    strokeWidth: 2)
+                                                : const SizedBox.shrink(),
+                                          ),
+                                          const SizedBox(width: 4),
+
+                                          // Select-all
+                                          Builder(builder: (context) {
+                                            final visibleIds = inventoryProvider
+                                                .products
+                                                .where((p) => p['id'] != null)
+                                                .map((p) => p['id'] as int)
+                                                .toList();
+                                            final allSelected =
+                                                visibleIds.isNotEmpty &&
+                                                    visibleIds.every((id) =>
+                                                        _selectedProductIds
+                                                            .contains(id));
+
+                                            return IconButton(
+                                              tooltip: allSelected
+                                                  ? 'Clear selection'
+                                                  : 'Select all',
+                                              onPressed: _isBulkActionLoading
+                                                  ? null
+                                                  : () {
+                                                      setState(() {
+                                                        if (allSelected) {
+                                                          _selectedProductIds
+                                                              .clear();
+                                                        } else {
+                                                          _selectedProductIds
+                                                              .addAll(
+                                                                  visibleIds);
+                                                        }
+                                                      });
+                                                    },
+                                              padding: const EdgeInsets.all(6),
+                                              icon: Icon(allSelected
+                                                  ? Icons.check_box
+                                                  : Icons.select_all),
+                                            );
+                                          }),
+                                          const SizedBox(width: 4),
+
+                                          // Bulk toggle activation
+                                          Builder(builder: (context) {
+                                            final selectedProducts =
+                                                inventoryProvider.products
+                                                    .where((p) =>
+                                                        p['id'] != null &&
+                                                        _selectedProductIds
+                                                            .contains(p['id']))
+                                                    .toList();
+                                            final hasInactive =
+                                                selectedProducts.any((p) =>
+                                                    p['is_active'] != true);
+                                            final hasActive =
+                                                selectedProducts.any((p) =>
+                                                    p['is_active'] == true);
+
+                                            IconData toggleIcon;
+                                            Color? toggleColor;
+                                            String tooltip;
+
+                                            if (hasActive && hasInactive) {
+                                              toggleIcon = Icons.sync;
+                                              toggleColor = Colors.amber;
+                                              tooltip =
+                                                  'Toggle activation (mixed)';
+                                            } else if (hasInactive) {
+                                              toggleIcon = Icons.toggle_on;
+                                              toggleColor = Colors.green;
+                                              tooltip = 'Activate selected';
+                                            } else {
+                                              toggleIcon = Icons.toggle_off;
+                                              toggleColor = Colors.grey;
+                                              tooltip = 'Deactivate selected';
+                                            }
+
+                                            final targetActivate = hasInactive;
+
+                                            return AnimatedSwitcher(
+                                              duration: const Duration(
+                                                  milliseconds: 220),
+                                              transitionBuilder: (child,
+                                                      animation) =>
+                                                  ScaleTransition(
+                                                      scale: animation,
+                                                      child: FadeTransition(
+                                                          opacity: animation,
+                                                          child: child)),
+                                              child: IconButton(
+                                                key: ValueKey<int>(
+                                                    toggleIcon.codePoint),
+                                                tooltip: tooltip,
+                                                onPressed: _isBulkActionLoading
+                                                    ? null
+                                                    : () =>
+                                                        _confirmBulkToggleProductStatus(
+                                                            targetActivate),
+                                                padding:
+                                                    const EdgeInsets.all(6),
+                                                icon: Icon(toggleIcon,
+                                                    color: toggleColor),
+                                              ),
+                                            );
+                                          }),
+                                          const SizedBox(width: 4),
+
+                                          IconButton(
+                                            tooltip: 'Delete',
+                                            onPressed: _isBulkActionLoading
+                                                ? null
+                                                : () =>
+                                                    _confirmBulkDeleteProducts(),
+                                            padding: const EdgeInsets.all(6),
+                                            icon: const Icon(
+                                                Icons.delete_forever),
+                                            color: _isBulkActionLoading
+                                                ? null
+                                                : Colors.red,
+                                          ),
+                                          const SizedBox(width: 4),
+
+                                          IconButton(
+                                            tooltip: 'Clear',
+                                            onPressed: _isBulkActionLoading
+                                                ? null
+                                                : _clearProductSelection,
+                                            padding: const EdgeInsets.all(6),
+                                            icon: const Icon(Icons.clear),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
+                          ),
+
+                        // Search bar for quick product lookup
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                          child: TextField(
+                            controller: _searchController,
+                            style: const TextStyle(color: Colors.black),
+                            decoration: InputDecoration(
+                              hintText: 'Search products',
+                              prefixIcon: const Icon(Icons.search),
+                              suffixIcon: _searchQuery.isEmpty
+                                  ? null
+                                  : IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        _searchController.clear();
+                                        _searchDebounce?.cancel();
+                                        setState(() => _searchQuery = '');
+                                      },
+                                    ),
+                              border: const OutlineInputBorder(),
+                            ),
+                            onChanged: (v) {
+                              _searchDebounce?.cancel();
+                              _searchDebounce =
+                                  Timer(const Duration(milliseconds: 300), () {
+                                final q = v.trim().toLowerCase();
+                                setState(() => _searchQuery = q);
+                              });
+                            },
+                          ),
+                        ),
+
+                        Expanded(
+                          child: RefreshIndicator(
+                            onRefresh: _loadProducts,
+                            child: Builder(builder: (context) {
+                              final displayedProducts = _searchQuery.isEmpty
+                                  ? inventoryProvider.products
+                                  : inventoryProvider.products
+                                      .where((p) => (p['name'] ?? '')
+                                          .toString()
+                                          .toLowerCase()
+                                          .contains(_searchQuery))
+                                      .toList();
+
+                              return ListView.builder(
+                                itemCount: displayedProducts.length + 1,
+                                itemBuilder: (context, index) {
+                                  // index 0 reserved for LowStockPanel
+                                  if (index == 0) {
+                                    return Padding(
+                                      padding: const EdgeInsets.all(8.0),
+                                      child: LowStockPanel(
+                                        count: inventoryProvider.lowStockCount,
+                                        criticalCount: inventoryProvider
+                                            .criticalLowStockCount,
+                                        onView: () {
+                                          showDialog(
+                                              context: context,
+                                              builder: (_) => AlertDialog(
+                                                    title: const Text(
+                                                        'Low stock alerts',
+                                                        style: TextStyle(
+                                                            color: AppColors
+                                                                .primaryBrand)),
+                                                    content: SizedBox(
+                                                      width: double.maxFinite,
+                                                      child: ListView(
+                                                        shrinkWrap: true,
+                                                        children:
+                                                            inventoryProvider
+                                                                .lowStockAlerts
+                                                                .map((a) =>
+                                                                    ListTile(
+                                                                      title: Text(
+                                                                          _displayNameForAlert(
+                                                                              a)),
+                                                                      subtitle:
+                                                                          Text(
+                                                                              'Stock: ${a['stock_quantity'] ?? 0}'),
+                                                                      onTap: () =>
+                                                                          _openProductFromAlert(
+                                                                              a),
+                                                                    ))
+                                                                .toList(),
+                                                      ),
+                                                    ),
+                                                  ));
+                                        },
+                                      ),
+                                    );
+                                  }
+
+                                  final product = displayedProducts[index - 1];
+                                  final id = product['id'] as int?;
+                                  final isSelected = id != null &&
+                                      _selectedProductIds.contains(id);
+                                  final isActive = product['is_active'] ?? true;
+
+                                  return Card(
+                                    margin: const EdgeInsets.symmetric(
+                                        horizontal: 16, vertical: 8),
+                                    child: InkWell(
+                                      // Long-press toggles selection for this product (adds or removes it)
+                                      onLongPress: id == null
+                                          ? null
+                                          : () {
+                                              setState(() {
+                                                if (_selectedProductIds
+                                                    .contains(id)) {
+                                                  _selectedProductIds
+                                                      .remove(id);
+                                                } else {
+                                                  _selectedProductIds.add(id);
+                                                }
+                                              });
+                                            },
+                                      onTap: () {
+                                        if (_selectedProductIds.isNotEmpty &&
+                                            id != null) {
+                                          setState(() {
+                                            if (isSelected) {
+                                              _selectedProductIds.remove(id);
+                                            } else {
+                                              _selectedProductIds.add(id);
+                                            }
+                                          });
+                                          return;
+                                        }
+                                        // Future: open product details/edit
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 8),
+                                        child: Row(
+                                          children: [
+                                            // Left: selection control / avatar
+                                            SizedBox(
+                                              width: 25,
+                                              height: 25,
+                                              child: (id == null ||
+                                                      _selectedProductIds
+                                                          .isEmpty)
+                                                  ? CircleAvatar(
+                                                      backgroundColor:
+                                                          const Color.fromARGB(
+                                                              131, 31, 60, 97),
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      child: Text(
+                                                          (product['name'] ??
+                                                              'P')[0]),
+                                                    )
+                                                  : Checkbox(
+                                                      value: isSelected,
+                                                      onChanged: (v) =>
+                                                          setState(() {
+                                                        if (v == true) {
+                                                          _selectedProductIds
+                                                              .add(id);
+                                                        } else {
+                                                          _selectedProductIds
+                                                              .remove(id);
+                                                        }
+                                                      }),
+                                                    ),
+                                            ),
+
+                                            const SizedBox(width: 8),
+
+                                            // Middle: product details
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    product['name'] ??
+                                                        'Unknown',
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: Theme.of(context)
+                                                        .textTheme
+                                                        .bodyLarge
+                                                        ?.copyWith(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            color:
+                                                                Colors.black),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Stock: ${product['stock_quantity'] ?? 0}',
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                        color: (product['id'] !=
+                                                                    null &&
+                                                                inventoryProvider
+                                                                    .lowStockAlerts
+                                                                    .any((a) =>
+                                                                        a['id'] ==
+                                                                        product[
+                                                                            'id']))
+                                                            ? Colors.red
+                                                            : AppColors
+                                                                .primaryAction),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+
+                                            // Spacer to push trailing controls to the far right and create more middle space
+                                            const SizedBox(width: 24),
+
+                                            // Right: compact controls (minimal width so middle can expand)
+                                            Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: 35,
+                                                  child: FittedBox(
+                                                    alignment:
+                                                        Alignment.centerRight,
+                                                    child: Text(
+                                                      '\$${(product['price'] ?? 0).toStringAsFixed(2)}',
+                                                      style: Theme.of(context)
+                                                          .textTheme
+                                                          .bodyMedium
+                                                          ?.copyWith(
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w600),
+                                                    ),
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  visualDensity:
+                                                      VisualDensity.compact,
+                                                  padding: const EdgeInsets
+                                                      .symmetric(
+                                                      horizontal: 4.0,
+                                                      vertical: 6.0),
+                                                  iconSize: 18,
+                                                  icon: Icon(
+                                                    isActive
+                                                        ? Icons.visibility_off
+                                                        : Icons.visibility,
+                                                  ),
+                                                  tooltip: isActive
+                                                      ? 'Deactivate'
+                                                      : 'Activate',
+                                                  onPressed:
+                                                      _isBulkActionLoading
+                                                          ? null
+                                                          : () async {
+                                                              try {
+                                                                await inventoryProvider
+                                                                    .updateProductStatus(
+                                                                        product[
+                                                                            'id'],
+                                                                        !isActive);
+                                                                if (context
+                                                                    .mounted) {
+                                                                  ScaffoldMessenger.of(
+                                                                          context)
+                                                                      .showSnackBar(SnackBar(
+                                                                          content:
+                                                                              Text('Product ${isActive ? 'deactivated' : 'activated'} successfully!')));
+                                                                }
+                                                              } catch (e) {
+                                                                if (context
+                                                                    .mounted) {
+                                                                  ScaffoldMessenger.of(
+                                                                          context)
+                                                                      .showSnackBar(SnackBar(
+                                                                          content:
+                                                                              Text('Error updating status: $e')));
+                                                                }
+                                                              }
+                                                            },
+                                                ),
+                                                PopupMenuButton<String>(
+                                                  icon: const Padding(
+                                                    padding:
+                                                        EdgeInsets.symmetric(
+                                                            horizontal: 4.0),
+                                                    child: Icon(Icons.more_vert,
+                                                        size: 18),
+                                                  ),
+                                                  onSelected: (value) {
+                                                    if (value == 'edit') {
+                                                      Navigator.of(context)
+                                                          .push(
+                                                        MaterialPageRoute(
+                                                          builder: (_) =>
+                                                              EditProductScreen(
+                                                                  product:
+                                                                      product),
+                                                        ),
+                                                      );
+                                                    }
+                                                  },
+                                                  itemBuilder: (context) => [
+                                                    const PopupMenuItem(
+                                                      value: 'edit',
+                                                      child: Text('Edit'),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            }),
+                          ),
+                        )
+                      ],
+                    ),
+      bottomNavigationBar: const AppBottomNav(currentRoute: '/inventory'),
+    );
+  }
+}

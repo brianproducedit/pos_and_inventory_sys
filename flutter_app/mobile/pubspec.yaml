@@ -1,0 +1,64 @@
+name: mobile
+description: POS and Inventory Mobile App
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.2
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  http: ^1.1.0
+  provider: ^6.0.5
+  shared_preferences: ^2.2.2
+  jwt_decoder: ^2.0.1
+  drift: ^2.5.0
+  drift_sqflite: ^2.0.1
+  uuid: ^4.5.2
+  workmanager: ^0.4.1
+  fl_chart: ^0.66.1
+  pdf: ^3.10.4
+  share_plus: ^12.0.1
+  print_bluetooth_thermal: ^1.1.9
+  path_provider: ^2.1.4
+  path_provider_android: ^2.2.9
+  envied: ^1.3.2
+  intl: ^0.19.0
+  timezone: ^0.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.3.3
+  envied_generator: ^1.3.2
+  build_runner: ^2.4.7
+  drift_dev: ^2.30.0
+  sqflite_common_ffi: ^2.3.6
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/pos_logo.png"
+
+flutter_native_splash:
+  color: "#ffffff"
+  image: assets/images/splash.png
+  android: true
+  ios: true

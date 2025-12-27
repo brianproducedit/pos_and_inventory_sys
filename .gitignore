@@ -1,0 +1,34 @@
+# Root .gitignore for project
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+backend/venv/
+**/venv/
+.env
+*.env
+.env.*
+
+# Database files
+*.sqlite
+*.db
+**/*.sqlite
+**/*.db
+
+# IDEs
+.vscode/
+.idea/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Flutter builds
+**/build/
+.flutter-plugins
+.packages
+.pub-cache/

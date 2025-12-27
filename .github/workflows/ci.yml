@@ -67,3 +67,24 @@ jobs:
         run: |
           cd flutter_app/mobile
           flutter test --coverage
+
+  mobile-e2e:
+    name: Flutter E2E sync test
+    runs-on: ubuntu-latest
+    needs: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+      - name: Install dependencies
+        run: |
+          cd flutter_app/mobile
+          flutter pub get
+      - name: Run sync E2E test
+        env:
+          NO_PROXY: '127.0.0.1,localhost'
+        run: |
+          cd flutter_app/mobile
+          flutter test test/e2e/sync_e2e_test.dart -r expanded

@@ -10,5 +10,5 @@ part of 'env.dart';
 // ignore_for_file: type=lint
 // generated_from: .env
 final class _Env {
-  static const String baseUrl = 'http://172.27.208.1:8000';
+  static const String baseUrl = 'http://192.168.49.130:8000';
 }

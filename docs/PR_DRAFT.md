@@ -14,8 +14,10 @@ Files changed:
 - flutter_app/mobile/lib/data/remote/postgres_api_service.dart (added `fetchChangesSinceSeq`)
 - flutter_app/mobile/lib/data/sync/postgres_sync_service.dart (added `pullChangesSinceSeq` implementation)
 - flutter_app/mobile/test/unit/postgres_sync_pull_test.dart (unit test for pull behavior)
+- flutter_app/mobile/test/data/sync/postgres_sync_push_test.dart (new unit test for batch push id_map behavior)
 - flutter_app/mobile/test/test_helpers.dart (centralized test bootstrap: sqflite ffi init, fake secure storage)
 - .github/workflows/flutter-unit-tests.yml (added: Flutter unit test job for mobile)
+- Many mobile tests updated to use shared `test/test_helpers.dart` to ensure deterministic FFI initialization and plugin mocks in CI (see commit for a full list of modified tests).
 
 Testing:
 - Ran `alembic upgrade head` against local Postgres (DATABASE_URL from `backend/.env`) successfully.

@@ -108,6 +108,6 @@ void main() {
       // Back to inventory, should show no products
       expect(inventory.products.isEmpty, isTrue);
     }, // skipped: flaky in CI — see docs/FLAKY_TESTS.md#inventory-add-edit-delete
-    skip: true);
+        skip: true);
   });
 }

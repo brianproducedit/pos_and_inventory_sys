@@ -5,9 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart';
 import '../db/app_database.dart';
 
-// Adjust to match your dev server (Android emulator uses 10.0.2.2 to reach host)
-const String defaultServerBase =
-    String.fromEnvironment('SERVER_BASE', defaultValue: 'http://10.0.2.2:8000');
+// Default server base: prefer configured environment constant (suitable for physical devices)
+import '../config/env.dart';
+
+final String defaultServerBase = Env.baseUrl;
 
 class SyncService {
   final dynamic db;
@@ -26,6 +27,22 @@ class SyncService {
       double price = 0.0,
       int stock = 0,
       int? storeId}) async {
+    // If caller didn't provide a storeId, try to read user's current store from prefs
+    if (storeId == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        storeId = prefs.getInt('current_store_id');
+      } catch (_) {
+        storeId = null;
+      }
+    }
+
+    // If still null, creating a product without a store is invalid in the server schema.
+    if (storeId == null) {
+      throw Exception(
+          'No active store selected. Please select a store before creating products.');
+    }
+
     final clientId = _uuid.v4();
     final entry = ProductsCompanion.insert(
       clientId: Value(clientId),
@@ -63,10 +80,42 @@ class SyncService {
     if (items.isEmpty) return {'applied': [], 'conflicts': []};
 
     final changes = items.map((it) => jsonDecode(it.payloadJson)).toList();
+
+    // Validate pending changes against server required fields to avoid server 500s
+    // e.g., product creates require a store_id which must not be null
+    final invalidTempIds = <String>[];
+    for (final ch in changes) {
+      try {
+        if ((ch['resource_type'] == 'product') &&
+            (ch['operation'] == 'create')) {
+          final data = ch['data'] as Map<String, dynamic>? ?? {};
+          if (data['store_id'] == null) {
+            final tempId = ch['temp_id'] as String? ?? '';
+            invalidTempIds.add(tempId);
+          }
+        }
+      } catch (_) {
+        // ignore malformed payloads here — they'll be handled by server if necessary
+      }
+    }
+    if (invalidTempIds.isNotEmpty) {
+      throw Exception(
+          'Pending product create(s) missing store_id (temp_ids: ${invalidTempIds.join(', ')}). Select a store or remove the pending changes before syncing.');
+    }
+
     final body =
         jsonEncode({'client_id': 'flutter-device', 'changes': changes});
 
     final headers = {'Content-Type': 'application/json'};
+    // If caller didn't provide a token, try to fetch the stored access_token
+    if (jwtToken == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        jwtToken = prefs.getString('access_token');
+      } catch (_) {
+        jwtToken = null;
+      }
+    }
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
 
     final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'),
@@ -111,12 +160,46 @@ class SyncService {
       }
     }
 
+    // Persist conflicts for UI resolution and return them to caller
+    final conflicts = data['conflicts'] ?? [];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      prefs.setString('last_sync_conflicts', jsonEncode(conflicts));
+      await prefs.setInt('sync_conflict_count', (conflicts as List).length);
+    } catch (_) {}
+
     // For simplicity, if there are conflicts, return them to UI for manual handling
     return {
       'applied': data['applied'] ?? [],
-      'conflicts': data['conflicts'] ?? [],
+      'conflicts': conflicts,
       'id_map': idMap
     };
+  }
+
+  /// Attach a store_id to pending product create queue items.
+  /// If [tempIds] provided, only updates those temp ids; otherwise updates all product creates.
+  Future<int> attachStoreToPendingCreates({
+    required int storeId,
+    List<String>? tempIds,
+  }) async {
+    final items = await db.getPendingChanges();
+    var updated = 0;
+    for (final q in items) {
+      try {
+        final p = jsonDecode(q.payloadJson) as Map<String, dynamic>;
+        if (p['resource_type'] == 'product' && p['operation'] == 'create') {
+          final tempId = p['temp_id'] as String?;
+          if (tempIds == null || (tempId != null && tempIds.contains(tempId))) {
+            final data = p['data'] as Map<String, dynamic>? ?? {};
+            data['store_id'] = storeId;
+            p['data'] = data;
+            await db.updateQueuePayload(q.id, jsonEncode(p));
+            updated++;
+          }
+        }
+      } catch (_) {}
+    }
+    return updated;
   }
 
   /// Force-update a single resource on the server as superadmin (adds `_force: true`)
@@ -165,6 +248,14 @@ class SyncService {
     final uri =
         Uri.parse('$serverBase/api/sync/changes?since=$sinceIso&types=$types');
     final headers = <String, String>{};
+    if (jwtToken == null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        jwtToken = prefs.getString('access_token');
+      } catch (_) {
+        jwtToken = null;
+      }
+    }
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
     final res = await httpClient.get(uri, headers: headers);
     if (res.statusCode != 200) {

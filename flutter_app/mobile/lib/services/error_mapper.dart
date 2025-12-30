@@ -1,13 +1,22 @@
+import 'package:mobile/services/auth_service.dart';
+
 class ErrorMapper {
   /// Map backend error codes/messages to user friendly messages.
   /// Extend this as server error contract evolves.
   static String friendlyMessage(dynamic error) {
     if (error == null) return 'An unknown error occurred.';
 
-    // If server returns an object with code/message
+    // If server returns an object with code/message (Map or AuthException)
     try {
-      final code = error['code'];
-      final message = error['message'] as String?;
+      dynamic code;
+      String? message;
+      if (error is Map) {
+        code = error['code'];
+        message = error['message'] as String?;
+      } else if (error is AuthException) {
+        code = error.code;
+        message = error.message;
+      }
 
       if (code != null) {
         switch (code.toString()) {

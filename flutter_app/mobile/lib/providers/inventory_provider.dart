@@ -2,14 +2,25 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import '../services/product_service.dart';
+import '../data/repositories/product_repository.dart';
+import '../data/local/database_helper.dart';
+import '../domain/models/product.dart' as domain_product;
 import 'store_provider.dart';
 import 'auth_provider.dart';
 
 class InventoryProvider with ChangeNotifier {
   final ProductService _productService;
+  final ProductRepository? _productRepository;
+  final DatabaseHelper? _dbHelper;
 
-  InventoryProvider({ProductService? productService})
-      : _productService = productService ?? ProductService();
+  InventoryProvider(
+      {ProductService? productService,
+      ProductRepository? productRepository,
+      DatabaseHelper? dbHelper})
+      : _productService = productService ?? ProductService(),
+        _productRepository = productRepository,
+        _dbHelper = dbHelper;
+
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _lowStockAlerts = [];
   bool _isLoading = false;
@@ -20,8 +31,14 @@ class InventoryProvider with ChangeNotifier {
 
   int? _lastStoreId;
 
+  int? _parseStoreId(dynamic id) {
+    if (id == null) return null;
+    if (id is int) return id;
+    return int.tryParse(id.toString());
+  }
+
   void _onStoreChanged() {
-    final newId = _storeProvider?.currentStore?['id'] as int?;
+    final newId = _parseStoreId(_storeProvider?.currentStore?['id']);
     if (newId != _lastStoreId) {
       _lastStoreId = newId;
       // Fire a refresh to reflect the new store context
@@ -43,9 +60,20 @@ class InventoryProvider with ChangeNotifier {
   Future<void> loadLowStockAlerts() async {
     _errorMessage = null;
     try {
-      final storeId = _storeProvider?.currentStore?['id'] as int?;
-      final alerts = await _productService.getLowStockAlerts(storeId: storeId);
-      _lowStockAlerts = alerts;
+      final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
+      if (_productRepository != null) {
+        final prods = await _productRepository!.getAllProducts();
+        _lowStockAlerts = prods
+            .where((p) =>
+                p.stockQuantity < 5 &&
+                (storeId == null || p.toMap()['store_id'] == storeId))
+            .map((p) => p.toMap())
+            .toList();
+      } else {
+        final alerts =
+            await _productService.getLowStockAlerts(storeId: storeId);
+        _lowStockAlerts = alerts;
+      }
     } catch (e) {
       _errorMessage = 'Failed to load low stock alerts: $e';
       debugPrint('Error loading low stock alerts: $e');
@@ -59,7 +87,7 @@ class InventoryProvider with ChangeNotifier {
       _storeProvider!.removeListener(_onStoreChanged);
     }
     _storeProvider = storeProvider;
-    _lastStoreId = _storeProvider?.currentStore?['id'] as int?;
+    _lastStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
     _storeProvider!.addListener(_onStoreChanged);
     // initial load of alerts for current store
     unawaited(loadLowStockAlerts());
@@ -70,20 +98,35 @@ class InventoryProvider with ChangeNotifier {
   }
 
   Future<void> loadProducts() async {
+    debugPrint('InventoryProvider.loadProducts: start');
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      // Use role-based access control for product loading
-      if (_authProvider?.role == 'superadmin') {
-        // Superadmin can see all products across stores
-        _products =
-            await _productService.getAllProducts(includeInactive: false);
+      final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
+      if (_productRepository != null) {
+        final prods = await _productRepository!.getAllProducts();
+        debugPrint(
+            'InventoryProvider.loadProducts: got ${prods.length} products from repo');
+        final maps = prods.map((p) => p.toMap()).toList();
+        if (_authProvider?.role == 'superadmin') {
+          _products = maps;
+        } else {
+          _products = maps.where((m) => m['store_id'] == storeId).toList();
+        }
       } else {
-        // Regular users see products filtered by current store
-        final storeId = _storeProvider?.currentStore?['id'];
-        _products = await _productService.getProducts(storeId: storeId);
+        // Use existing ProductService
+        // If superadmin, or admin has selected "All Stores" (store id == 0),
+        // use getAllProducts so the server can return the union of accessible stores.
+        final rawStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
+        if (_authProvider?.role == 'superadmin' ||
+            (_authProvider?.role == 'admin' && rawStoreId == 0)) {
+          _products =
+              await _productService.getAllProducts(includeInactive: false);
+        } else {
+          _products = await _productService.getProducts(storeId: storeId);
+        }
       }
 
       // Also load low stock alerts for current store
@@ -93,6 +136,8 @@ class InventoryProvider with ChangeNotifier {
       debugPrint('Error loading products: $e');
     } finally {
       _isLoading = false;
+      debugPrint(
+          'InventoryProvider.loadProducts: end, products=${_products.length}');
       notifyListeners();
     }
   }
@@ -100,7 +145,7 @@ class InventoryProvider with ChangeNotifier {
   Future<void> addProduct(Map<String, dynamic> productData) async {
     _errorMessage = null;
     try {
-      final storeId = _storeProvider?.currentStore?['id'];
+      final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
       if (storeId == null) {
         _errorMessage =
             'No store selected. Please select a store before adding a product.';
@@ -108,10 +153,25 @@ class InventoryProvider with ChangeNotifier {
         throw Exception(_errorMessage);
       }
 
-      final newProduct =
-          await _productService.createProduct(productData, storeId: storeId);
-      _products.add(newProduct);
-      notifyListeners();
+      if (_productRepository != null) {
+        // Use repository to insert locally and queue sync
+        final newId =
+            await _productRepository!.addProduct(domain_product.Product(
+          name: productData['name'] as String? ?? '',
+          sku: productData['sku'] as String? ??
+              'SKU-${DateTime.now().millisecondsSinceEpoch}',
+          price: (productData['price'] as num?)?.toDouble() ?? 0.0,
+          stockQuantity: productData['stock_quantity'] as int? ?? 0,
+          storeId: storeId,
+        ));
+        // Reload products to reflect new row
+        await loadProducts();
+      } else {
+        final newProduct =
+            await _productService.createProduct(productData, storeId: storeId);
+        _products.add(newProduct);
+        notifyListeners();
+      }
     } catch (e) {
       _errorMessage = 'Failed to add product: $e';
       debugPrint('Error adding product: $e');
@@ -123,13 +183,19 @@ class InventoryProvider with ChangeNotifier {
       int productId, Map<String, dynamic> productData) async {
     _errorMessage = null;
     try {
-      final storeId = _storeProvider?.currentStore?['id'];
-      final updatedProduct = await _productService
-          .updateProduct(productId, productData, storeId: storeId);
-      final index = _products.indexWhere((p) => p['id'] == productId);
-      if (index != -1) {
-        _products[index] = updatedProduct;
-        notifyListeners();
+      final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
+      if (_productRepository != null) {
+        await _productRepository!.updateProduct(productId, productData);
+        // reload to reflect update
+        await loadProducts();
+      } else {
+        final updatedProduct = await _productService
+            .updateProduct(productId, productData, storeId: storeId);
+        final index = _products.indexWhere((p) => p['id'] == productId);
+        if (index != -1) {
+          _products[index] = updatedProduct;
+          notifyListeners();
+        }
       }
     } catch (e) {
       _errorMessage = 'Failed to update product: $e';
@@ -141,10 +207,15 @@ class InventoryProvider with ChangeNotifier {
   Future<void> deleteProduct(int productId) async {
     _errorMessage = null;
     try {
-      final storeId = _storeProvider?.currentStore?['id'];
-      await _productService.deleteProduct(productId, storeId: storeId);
-      _products.removeWhere((p) => p['id'] == productId);
-      notifyListeners();
+      if (_productRepository != null) {
+        await _productRepository!.deleteProduct(productId);
+        await loadProducts();
+      } else {
+        final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
+        await _productService.deleteProduct(productId, storeId: storeId);
+        _products.removeWhere((p) => p['id'] == productId);
+        notifyListeners();
+      }
     } catch (e) {
       _errorMessage = 'Failed to delete product: $e';
       debugPrint('Error deleting product: $e');
@@ -159,13 +230,15 @@ class InventoryProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_authProvider?.role == 'superadmin') {
-        // Superadmin can see all products across stores
+      final rawStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
+      if (_authProvider?.role == 'superadmin' ||
+          (_authProvider?.role == 'admin' && rawStoreId == 0)) {
+        // Superadmin or admin with "All Stores" selected should get all products
         _products = await _productService.getAllProducts(
             includeInactive: includeInactive);
       } else {
         // Regular users see products filtered by current store
-        final storeId = _storeProvider?.currentStore?['id'];
+        final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
         _products = await _productService.getAllProducts(
             includeInactive: includeInactive, storeId: storeId);
       }
@@ -181,7 +254,7 @@ class InventoryProvider with ChangeNotifier {
   Future<void> updateProductStatus(int productId, bool isActive) async {
     _errorMessage = null;
     try {
-      final storeId = _storeProvider?.currentStore?['id'];
+      final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
       final updatedProduct = await _productService
           .updateProductStatus(productId, isActive, storeId: storeId);
       final index = _products.indexWhere((p) => p['id'] == productId);
@@ -209,4 +282,25 @@ class InventoryProvider with ChangeNotifier {
     }
     super.dispose();
   }
+
+  /// Test helper: set a simple current store without needing a full StoreProvider.
+  void setCurrentStoreForTest(Map<String, dynamic> store) {
+    _storeProvider = _DummyStoreProvider(store);
+    _lastStoreId = store['id'] as int?;
+  }
+}
+
+/// Internal lightweight store provider used only for tests and simple injections.
+class _DummyStoreProvider extends StoreProvider {
+  final Map<String, dynamic>? _store;
+  _DummyStoreProvider(this._store) : super();
+
+  @override
+  Map<String, dynamic>? get currentStore => _store;
+
+  @override
+  void addListener(listener) {}
+
+  @override
+  void removeListener(listener) {}
 }

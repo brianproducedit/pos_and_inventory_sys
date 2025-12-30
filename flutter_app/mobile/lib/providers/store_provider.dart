@@ -79,17 +79,50 @@ class StoreProvider with ChangeNotifier {
         // Normalize malformed backend: map with null id should be treated as All Stores
         if (cs == null || (cs is Map && cs['id'] == null)) {
           debugPrint(
-              'StoreProvider._loadStoredStoreContext: backend provided null or null-id current_store; treating as All Stores');
-          _currentStore = null;
+              'StoreProvider._loadStoredStoreContext: backend provided null or null-id current_store; considering role before treating as All Stores');
+
+          // Only allow All Stores (null) for admin / superadmin. For other roles, prefer
+          // a deterministic fallback: load _myStores and pick the first available store.
+          final prefs = await SharedPreferences.getInstance();
+          final role = prefs.getString('user_role')?.toLowerCase();
+          if (role == 'superadmin' || role == 'admin') {
+            _currentStore = null;
+            _restoredStoreContext = true;
+          } else {
+            // Ensure we have myStores loaded so we can pick a sensible fallback.
+            if (_myStores.isEmpty) {
+              try {
+                await loadMyStores();
+              } catch (e) {
+                debugPrint(
+                    'StoreProvider._loadStoredStoreContext: failed to load myStores: $e');
+              }
+            }
+            if (_myStores.isNotEmpty) {
+              _currentStore = _myStores.first;
+              _restoredStoreContext = true;
+              debugPrint(
+                  'StoreProvider._loadStoredStoreContext: non-admin fallback to myStores[0]=${_currentStore}');
+            } else {
+              // No assigned stores; clear persisted context and avoid setting All Stores for non-admin
+              debugPrint(
+                  'StoreProvider._loadStoredStoreContext: non-admin has no myStores; clearing persisted store id');
+              await prefs.remove('current_store_id');
+              _currentStore =
+                  null; // Ultimately null but not marked as restored from backend
+            }
+          }
         } else {
           _currentStore = cs;
+          _restoredStoreContext = true;
         }
-        _restoredStoreContext = true;
         debugPrint(
             'StoreProvider._loadStoredStoreContext: restored _currentStore=${_currentStore}');
 
         // Persist the canonical choice locally (null -> remove key)
         await _saveStoreContext();
+        // Notify listeners so consumers can react to restored context
+        _safeNotify();
       } else if (storedStoreId != null) {
         // Fallback for legacy behavior: try to use stored ID if backend did not return current_store
         debugPrint(
@@ -100,10 +133,12 @@ class StoreProvider with ChangeNotifier {
           _currentStore = null;
           _restoredStoreContext = true;
           await _saveStoreContext();
+          _safeNotify();
         } else if (currentStoreData['current_store'] != null) {
           _currentStore = currentStoreData['current_store'];
           _restoredStoreContext = true;
           await _saveStoreContext();
+          _safeNotify();
         }
       }
     } catch (e) {
@@ -323,6 +358,31 @@ class StoreProvider with ChangeNotifier {
         'StoreProvider.switchStore: _myStores ids=${_myStores.map((s) => s['id']).toList()}');
 
     try {
+      // Validate requested id
+      if (requestedId < 0) {
+        _errorMessage = 'Failed to switch store: invalid store id';
+        debugPrint(
+            'StoreProvider.switchStore: invalid requestedId=$requestedId');
+        _safeNotify();
+        return false;
+      }
+
+      // Special-case: allow switching to 'All Stores' (id == 0) but only for admin/superadmin.
+      if (requestedId == 0) {
+        final prefs = await SharedPreferences.getInstance();
+        final role = prefs.getString('user_role')?.toLowerCase();
+        // Deny only if role is explicitly present and is not admin/superadmin.
+        // If role is null (unknown), allow switching to All Stores to support legacy clients or tests.
+        if (role != null && role != 'superadmin' && role != 'admin') {
+          _errorMessage =
+              'Failed to switch store: insufficient permissions for All Stores view';
+          debugPrint(
+              'StoreProvider.switchStore: denied All Stores for role=$role');
+          _safeNotify();
+          return false;
+        }
+      }
+
       // No-op: already on the requested store (All Stores represented by null)
       if ((requestedId == 0 && _currentStore == null) ||
           (requestedId != 0 &&
@@ -333,19 +393,9 @@ class StoreProvider with ChangeNotifier {
         return true;
       }
 
-      // Validate requested id
-      if (requestedId < 0) {
-        _errorMessage = 'Failed to switch store: invalid store id';
-        debugPrint(
-            'StoreProvider.switchStore: invalid requestedId=$requestedId');
-        _safeNotify();
-        return false;
-      }
-
-      // Special-case: allow switching to 'All Stores' (id == 0) and skip client-side access check.
+      // Client-side validation: only enforce if _myStores has been populated.
+      // If it's empty (e.g., not yet loaded), skip and let the backend enforce access control.
       if (requestedId != 0) {
-        // Client-side validation: only enforce if _myStores has been populated.
-        // If it's empty (e.g., not yet loaded), skip and let the backend enforce access control.
         if (_myStores.isNotEmpty &&
             !_myStores.any((s) =>
                 (s['id'] is int

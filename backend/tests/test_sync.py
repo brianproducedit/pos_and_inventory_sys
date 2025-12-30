@@ -99,6 +99,15 @@ def test_push_create_product(tmp_path, monkeypatch):
     assert p is not None
     assert p.name == 'PushedProd'
 
+    # Also verify change was recorded and visible via server_seq pull
+    r2 = client.get(f"/api/sync/changes?since_seq=0&types=product", headers=headers)
+    assert r2.status_code == 200, r2.text
+    data = r2.json()
+    assert 'changes' in data
+    changes = data['changes']
+    assert any(ch.get('entity_type') == 'product' and ch.get('entity_id') == str(new_id) and ch.get('operation') == 'create' for ch in changes)
+
+
 
 def test_push_conflict(tmp_path, monkeypatch):
     db_file = tmp_path / 'test_sync_conflict.db'
@@ -230,6 +239,66 @@ def test_push_create_store(tmp_path, monkeypatch):
     assert s is not None
     assert s.name == 'Synced Store'
 
+    # Verify change is visible via server_seq pull
+    r2 = client.get(f"/api/sync/changes?since_seq=0&types=store", headers=headers)
+    assert r2.status_code == 200, r2.text
+    data = r2.json()
+    assert any(ch.get('entity_type') == 'store' and ch.get('entity_id') == str(new_id) and ch.get('operation') == 'create' for ch in data['changes'])
+
+
+def test_push_create_idempotent(tmp_path, monkeypatch):
+    db_file = tmp_path / 'test_sync_idemp.db'
+    os.environ['DATABASE_URL'] = f"sqlite:///{db_file}"
+    os.environ['DEFAULT_SUPERADMIN_PASSWORD'] = 'testpw'
+
+    client = TestClient(app)
+
+    # Create store to assign to product
+    db = SessionLocal()
+    store = Store(name='IdempStore')
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+
+    token = get_token(client)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    payload = {
+        'client_id': 'cli-idemp',
+        'changes': [
+            {
+                'resource_type': 'product',
+                'operation': 'create',
+                'temp_id': 'tid-1',
+                'data': {
+                    'name': 'IdempProd',
+                    'price': 1.5,
+                    'stock_quantity': 3,
+                    'store_id': store.id
+                }
+            }
+        ]
+    }
+
+    r1 = client.post('/api/sync/push', json=payload, headers=headers)
+    assert r1.status_code == 200
+    res1 = r1.json()
+    assert 'id_map' in res1 and 'tid-1' in res1['id_map']
+    id1 = res1['id_map']['tid-1']
+
+    # Repeat same push
+    r2 = client.post('/api/sync/push', json=payload, headers=headers)
+    assert r2.status_code == 200
+    res2 = r2.json()
+    assert 'id_map' in res2 and 'tid-1' in res2['id_map']
+    id2 = res2['id_map']['tid-1']
+
+    assert id1 == id2
+
+    db = SessionLocal()
+    prods = db.query(Product).filter(Product.name == 'IdempProd').all()
+    assert len(prods) == 1
+
 
 def test_push_create_user(tmp_path, monkeypatch):
     db_file = tmp_path / 'test_sync_user.db'
@@ -282,3 +351,34 @@ def test_push_create_user(tmp_path, monkeypatch):
     assert u is not None
     assert u.username == 'syncuser'
     assert u.role.name == 'admin'
+
+
+def test_push_create_product_missing_store_returns_400(tmp_path, monkeypatch):
+    db_file = tmp_path / 'test_sync_push_create_missing_store.db'
+    os.environ['DATABASE_URL'] = f"sqlite:///{db_file}"
+    os.environ['DEFAULT_SUPERADMIN_PASSWORD'] = 'testpw'
+
+    client = TestClient(app)
+
+    token = get_token(client)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    payload = {
+        'client_id': 'cli4',
+        'changes': [
+            {
+                'resource_type': 'product',
+                'operation': 'create',
+                'temp_id': 't_missing',
+                'data': {
+                    'name': 'NoStoreProd',
+                    'price': 3.5,
+                    'stock_quantity': 1
+                }
+            }
+        ]
+    }
+
+    r = client.post('/api/sync/push', json=payload, headers=headers)
+    assert r.status_code == 400
+    assert 'store_id' in r.json().get('detail', '')

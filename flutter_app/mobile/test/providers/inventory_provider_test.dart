@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/services/product_service.dart';
@@ -38,6 +39,40 @@ class FakeStoreService extends StoreService {
   Future<List<Map<String, dynamic>>> getStores() async => [];
 }
 
+class FakeProductServiceWithAll extends ProductService {
+  int getProductsCallCount = 0;
+  int getAllCallCount = 0;
+  final List<Map<String, dynamic>> allProducts = [
+    {'id': 1, 'name': 'A'},
+    {'id': 2, 'name': 'B'}
+  ];
+
+  @override
+  Future<List<Map<String, dynamic>>> getProducts({int? storeId}) async {
+    getProductsCallCount++;
+    return [
+      {'id': 1, 'name': 'A', 'store_id': storeId}
+    ];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getAllProducts(
+      {bool includeInactive = false, int? storeId}) async {
+    getAllCallCount++;
+    return allProducts;
+  }
+}
+
+class FakeAuthProviderForInventory extends AuthProvider {
+  final String _role;
+  FakeAuthProviderForInventory(this._role);
+
+  @override
+  bool get isAuthenticated => true;
+  @override
+  String? get role => _role;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -72,5 +107,20 @@ void main() {
     await Future.delayed(const Duration(milliseconds: 200));
 
     expect(fake.callCount, greaterThanOrEqualTo(1));
+  });
+
+  test('admin with All Stores selected calls getAllProducts', () async {
+    final fake = FakeProductServiceWithAll();
+    final inventory = InventoryProvider(productService: fake);
+    final auth = FakeAuthProviderForInventory('admin');
+
+    inventory.setAuthProvider(auth);
+    inventory.setCurrentStoreForTest({'id': 0});
+
+    await inventory.loadProducts();
+
+    expect(fake.getAllCallCount, 1);
+    expect(fake.getProductsCallCount, 0);
+    expect(inventory.products, equals(fake.allProducts));
   });
 }

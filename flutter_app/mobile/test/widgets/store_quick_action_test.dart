@@ -61,6 +61,27 @@ class _FakeStoreProvider extends StoreProvider {
   }
 }
 
+class _FakeStoreProviderNoStores extends StoreProvider {
+  @override
+  bool get isSwitchingStore => false;
+
+  List<Map<String, dynamic>> _stores = [];
+  @override
+  List<Map<String, dynamic>> get availableStores => _stores;
+
+  @override
+  Future<void> loadAvailableStores() async {
+    // Simulate no assigned stores (admin fallback case)
+    _stores = [];
+  }
+
+  @override
+  Future<bool> switchStore(Map<String, dynamic> store) async {
+    // simulate success
+    return true;
+  }
+}
+
 void main() {
   testWidgets('quick action visible for admin and can open dialog',
       (WidgetTester tester) async {
@@ -89,9 +110,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Switch Store'), findsOneWidget);
+    // Admin has assigned stores in this fake provider so 'All Stores' should be shown but disabled
     expect(find.text('All Stores'), findsOneWidget);
     expect(find.text('Alpha'), findsOneWidget);
     expect(find.text('Beta'), findsOneWidget);
+
+    // Attempt to tap the disabled All Stores option — dialog should remain open
+    await tester.tap(find.text('All Stores'));
+    await tester.pumpAndSettle();
+    // Dialog remains visible
+    expect(find.text('Switch Store'), findsOneWidget);
 
     // Select Alpha and assert analytics event emitted
     await tester.tap(find.text('Alpha'));
@@ -107,5 +135,48 @@ void main() {
     expect(payload!['userId'], 99);
     expect(payload['toStoreId'], 1);
     expect(payload['durationMs'], isA<int>());
+    expect(payload['success'], true);
+  });
+
+  testWidgets('admin with no assigned stores sees All Stores option',
+      (WidgetTester tester) async {
+    final storeProv = _FakeStoreProviderNoStores();
+    final authProv = _FakeAuthProvider();
+    authProv.setRole('admin');
+    authProv.setUserId(100);
+    final fakeAnalytics = AnalyticsProvider();
+
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<StoreProvider>.value(value: storeProv),
+          ChangeNotifierProvider<AuthProvider>.value(value: authProv),
+          ChangeNotifierProvider<AnalyticsProvider>.value(value: fakeAnalytics),
+        ],
+        child: MaterialApp(
+            home:
+                Scaffold(appBar: AppBar(actions: const [StoreQuickAction()]))),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.store));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Switch Store'), findsOneWidget);
+    // No assigned stores -> All Stores option should be present
+    expect(find.text('All Stores'), findsOneWidget);
+
+    await tester.tap(find.text('All Stores'));
+    await tester.pumpAndSettle();
+
+    final analytics = Provider.of<AnalyticsProvider>(
+        tester.element(find.byType(StoreQuickAction)),
+        listen: false);
+    expect(analytics.lastEventName, 'store_quick_switch');
+    final payload = analytics.lastEventPayload;
+    expect(payload, isNotNull);
+    expect(payload!['userId'], 100);
+    expect(payload['toStoreId'], 0);
+    expect(payload['success'], true);
   });
 }

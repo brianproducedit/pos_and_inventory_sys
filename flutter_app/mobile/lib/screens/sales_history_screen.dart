@@ -11,7 +11,8 @@ import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
-  const SalesHistoryScreen({super.key});
+  final SalesService? salesService;
+  const SalesHistoryScreen({super.key, this.salesService});
 
   @override
   State<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
@@ -51,6 +52,17 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       _storeProvider = storeProvider;
       _storeProvider?.addListener(_loadSalesHistory);
 
+      // Ensure non-admin users are not left on an implicit All Stores view
+      final authProvider = context.read<AuthProvider>();
+      if (storeProvider.currentStore == null &&
+          authProvider.role != 'superadmin' &&
+          authProvider.role != 'admin') {
+        // Try to fallback to the user's assigned store if available
+        if (storeProvider.myStores.isNotEmpty) {
+          await storeProvider.switchStore(storeProvider.myStores.first);
+        }
+      }
+
       await _loadSalesHistory();
     });
   }
@@ -60,8 +72,15 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       if (!mounted) return;
       setState(() => _isLoading = true);
       final storeProvider = context.read<StoreProvider>();
-      final storeId = storeProvider.currentStore?['id'] as int?;
-      final sales = await _salesService.getSales(storeId: storeId);
+      final rawIdValue = storeProvider.currentStore == null
+          ? null
+          : storeProvider.currentStore?['id'];
+      final int? rawId = rawIdValue is int
+          ? rawIdValue
+          : int.tryParse(rawIdValue?.toString() ?? '');
+      final int? storeId = (rawId == 0) ? null : rawId;
+      final service = widget.salesService ?? SalesService();
+      final sales = await service.getSales(storeId: storeId);
       if (!mounted) return;
       setState(() {
         _sales = sales;

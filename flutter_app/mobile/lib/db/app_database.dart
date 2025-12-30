@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift_sqflite/drift_sqflite.dart';
+import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 // import 'package:uuid/uuid.dart';
@@ -45,6 +46,11 @@ class AppDatabase extends _$AppDatabase {
     return AppDatabase._(exec);
   }
 
+  /// Create an in-memory AppDatabase suitable for fast, deterministic tests.
+  static AppDatabase inMemory() {
+    return AppDatabase._(NativeDatabase.memory());
+  }
+
   @override
   int get schemaVersion => 1;
 
@@ -84,6 +90,15 @@ class AppDatabase extends _$AppDatabase {
   Future<List<SyncQueueData>> getPendingChanges() => select(syncQueue).get();
   Future<int> deleteQueueItem(int id) =>
       (delete(syncQueue)..where((t) => t.id.equals(id))).go();
+
+  /// Update raw payload JSON for a queue item. Useful for attaching metadata
+  /// (e.g., assigning a store_id to product create payloads).
+  Future<int> updateQueuePayload(int id, String payloadJson) =>
+      (update(syncQueue)..where((t) => t.id.equals(id))).write(
+        SyncQueueCompanion(
+          payloadJson: Value(payloadJson),
+        ),
+      );
 
   /// Async constructor helper usable from background isolates.
   static Future<AppDatabase> open() async {

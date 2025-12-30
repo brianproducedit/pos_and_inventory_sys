@@ -9,6 +9,7 @@ import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/user_management_provider.dart';
 import 'package:mobile/services/store_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../test_helpers.dart';
 
 class FakeStoreServiceTest extends StoreService {
   @override
@@ -59,8 +60,8 @@ class FakeUserManagementProvider extends UserManagementProvider {
 void main() {
   testWidgets('Admin app bar shows StoreQuickAction and not StoreSwitcher',
       (tester) async {
-    // Ensure SharedPreferences is mocked for test environment
-    SharedPreferences.setMockInitialValues({});
+    // Ensure test helpers are initialized (bindings, SharedPreferences, HTTP override)
+    initializeTestHelpersOnce();
 
     final storeProvider = StoreProvider(storeService: FakeStoreServiceTest());
     final userProvider = FakeUserManagementProvider();

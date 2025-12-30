@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/services/sales_service.dart';
+import 'package:provider/provider.dart';
+import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -11,8 +13,11 @@ import 'package:mobile/widgets/primary_dialog.dart';
 
 class ReceiptScreen extends StatefulWidget {
   final int saleId;
+  final int? storeId; // optional override for tests or explicit store context
+  final SalesService? salesService; // optional injectable service for testing
 
-  const ReceiptScreen({super.key, required this.saleId});
+  const ReceiptScreen(
+      {super.key, required this.saleId, this.storeId, this.salesService});
 
   @override
   State<ReceiptScreen> createState() => _ReceiptScreenState();
@@ -39,7 +44,25 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   Future<void> _loadReceipt() async {
     try {
       setState(() => _isLoading = true);
-      final receipt = await _salesService.getReceipt(widget.saleId);
+
+      // Determine store id to use for request. Precedence:
+      // 1) explicit widget.storeId (injected for tests or explicit flows)
+      // 2) current store from StoreProvider (if available)
+      // 3) null (SalesService will fall back to persisted store id if needed)
+      int? sid = widget.storeId;
+      if (sid == null) {
+        try {
+          final sp = Provider.of<StoreProvider>(context, listen: false);
+          final rawId = sp.currentStore != null ? sp.currentStore!['id'] : null;
+          sid = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
+        } catch (e) {
+          // Provider might not be available in some contexts (tests); ignore.
+          sid = null;
+        }
+      }
+
+      final service = widget.salesService ?? _salesService;
+      final receipt = await service.getReceipt(widget.saleId, storeId: sid);
       setState(() {
         _receiptData = receipt;
         _isLoading = false;

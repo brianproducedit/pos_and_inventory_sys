@@ -4,6 +4,7 @@ import 'package:mobile/screens/inventory_screen.dart';
 import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/services/product_service.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/screens/edit_product_screen.dart';
 import '../test_helpers.dart';
@@ -88,6 +89,38 @@ class FakeAuthProvider extends AuthProvider {
   bool get isAuthenticated => true;
   @override
   String? get role => 'admin';
+}
+
+class TestStoreProviderAll extends StoreProvider {
+  TestStoreProviderAll() : super();
+  @override
+  Future<void> initialize() async {
+    return;
+  }
+
+  @override
+  Map<String, dynamic>? get currentStore => {'id': 0, 'name': 'All Stores'};
+
+  @override
+  bool get isInitialized => true;
+}
+
+class FakeProductServiceForWidget extends ProductService {
+  @override
+  Future<List<Map<String, dynamic>>> getAllProducts(
+      {bool includeInactive = false, int? storeId}) async {
+    return [
+      {'id': 10, 'name': 'All A'},
+      {'id': 11, 'name': 'All B'}
+    ];
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getProducts({int? storeId}) async {
+    return [
+      {'id': 20, 'name': 'Store Product', 'store_id': storeId}
+    ];
+  }
 }
 
 void main() {
@@ -429,5 +462,27 @@ void main() {
 
     expect(find.text('Gadget'), findsOneWidget);
     expect(find.text('Widget'), findsOneWidget);
+  });
+
+  testWidgets('Admin All Stores shows all products via getAllProducts',
+      (tester) async {
+    final fakeService = FakeProductServiceForWidget();
+    final inv = InventoryProvider(productService: fakeService);
+    final auth = TestAuthProvider(roleValue: 'admin');
+    final storeAll = TestStoreProviderAll();
+
+    await tester.pumpWidget(wrapWithDefaultProviders(const InventoryScreen(),
+        inventory: inv, auth: auth, store: storeAll));
+
+    // Ensure the provider is aware of the injected store and auth
+    inv.setAuthProvider(auth);
+
+    // trigger initial load
+    await inv.loadProducts();
+
+    await tester.pumpAndSettle();
+
+    expect(find.text('All A'), findsOneWidget);
+    expect(find.text('All B'), findsOneWidget);
   });
 }

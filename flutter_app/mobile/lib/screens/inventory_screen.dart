@@ -63,6 +63,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
       inventoryProvider.setAuthProvider(authProvider);
       inventoryProvider.setStoreProvider(storeProvider);
 
+      // If a non-admin is on All Stores, fallback to first myStore when available
+      if (storeProvider.currentStore == null &&
+          authProvider.role != 'superadmin' &&
+          authProvider.role != 'admin') {
+        if (storeProvider.myStores.isNotEmpty) {
+          await storeProvider.switchStore(storeProvider.myStores.first);
+        }
+      }
+
       // Load products based on user role
       if (authProvider.role == 'superadmin') {
         // Superadmin can see all products across stores

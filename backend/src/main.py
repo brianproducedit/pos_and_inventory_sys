@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from src.routers import auth, users, products, sales, inventory, settings, audit, stores, analytics, sync
+from src.routers import auth, users, products, sales, inventory, settings, audit, stores, analytics, sync, admin
 
 app = FastAPI(title="POS and Inventory System API", version="1.0.0")
 
@@ -23,6 +23,7 @@ app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(stores.router, prefix="", tags=["stores"])
 app.include_router(sync.router, prefix="", tags=["sync"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 # Ensure default superadmin exists on startup (dev convenience)
 @app.on_event("startup")
 async def startup_event():

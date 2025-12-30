@@ -5,6 +5,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' as ffi;
+import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
@@ -26,6 +30,29 @@ class TestAuthProvider extends AuthProvider {
 /// Minimal no-op providers used for widget tests to avoid provider not found
 class TestStoreProvider extends StoreProvider {
   TestStoreProvider() : super();
+
+  // Override initialization to avoid background network calls during tests
+  @override
+  Future<void> initialize() async {
+    // Do not call super.initialize() which triggers backend fetches
+    debugPrint('TestStoreProvider.initialize: no-op for tests');
+    return;
+  }
+
+  @override
+  Future<void> loadMyStores() async {
+    // Provide a deterministic empty set for tests
+    debugPrint('TestStoreProvider.loadMyStores: no-op for tests');
+    return;
+  }
+
+  // Provide a deterministic current store for widget tests
+  @override
+  Map<String, dynamic>? get currentStore => {'id': 1, 'name': 'Store 1'};
+
+  // Report initialized so UI paths that check this don't trigger background work
+  @override
+  bool get isInitialized => true;
 }
 
 class TestInventoryProvider extends InventoryProvider {
@@ -58,9 +85,19 @@ Widget wrapWithDefaultProviders(Widget child,
   );
 }
 
-/// Initialize shared preferences and other global test state
-Future<void> initTestEnvironment() async {
+bool _testHelpersInitialized = false;
+
+/// Initialize shared preferences, platform bindings and other global test state
+/// Call this at the top of your test `main()` or inside `setUpAll()`.
+void initializeTestHelpersOnce() {
+  if (_testHelpersInitialized) return;
+  // Ensure Flutter's platform bindings are available for plugin calls
+  TestWidgetsFlutterBinding.ensureInitialized();
+  // Provide default mock values for SharedPreferences
   SharedPreferences.setMockInitialValues({});
+  // Provide a deterministic HTTP client for tests
+  HttpOverrides.global = _FakeHttpOverrides();
+  _testHelpersInitialized = true;
 }
 
 // Simple fake HTTP override so widget tests that attempt networking get a
@@ -183,10 +220,31 @@ class _FakeHttpOverrides extends HttpOverrides {
   HttpClient createHttpClient(SecurityContext? _) => _FakeHttpClient();
 }
 
-// Helper that initializes mocks used during tests. Tests should call this
-// explicitly from setUp() rather than executing at import time to avoid
-// interfering with the Flutter test harness (which may use HTTP internally).
-void initializeTestHelpersOnce() {
-  SharedPreferences.setMockInitialValues({});
-  HttpOverrides.global = _FakeHttpOverrides();
+// ---------- sqflite ffi and plugin helpers (test bootstrap) ----------
+
+/// Initialize sqflite ffi and set the common databaseFactory for tests.
+void initSqfliteForTests() {
+  try {
+    ffi.sqfliteFfiInit();
+    sqflite_common.databaseFactory = ffi.databaseFactoryFfi;
+  } catch (_) {
+    // ignore: avoid_print
+    debugPrint('sqflite ffi already initialized or not available in this env');
+  }
+}
+
+/// Fake `flutter_secure_storage` for unit tests to avoid platform plugin errors.
+class FakeFlutterSecureStorage extends FlutterSecureStorage {
+  @override
+  Future<String?> read({
+    AndroidOptions? aOptions,
+    IOSOptions? iOptions,
+    required String key,
+    LinuxOptions? lOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+    WebOptions? webOptions,
+  }) async {
+    return 'fake-token';
+  }
 }

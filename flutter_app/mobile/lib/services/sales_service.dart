@@ -1,33 +1,55 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 import '../config/env.dart';
 
 class SalesService {
   static const String baseUrl = Env.baseUrl;
+
+  final http.Client client;
+
+  SalesService({http.Client? client}) : client = client ?? http.Client();
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('access_token');
   }
 
-  Future<Map<String, dynamic>> createSale(Map<String, dynamic> saleData) async {
+  int? _normalizeStoreId(int? id) => (id != null && id == 0) ? null : id;
+
+  Future<Map<String, dynamic>> createSale(Map<String, dynamic> saleData,
+      {int? storeId}) async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
-    final response = await http.post(
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    // Prefer explicit storeId param; otherwise use persisted current_store_id
+    int? sid = storeId;
+    if (sid == null) {
+      final prefs = await SharedPreferences.getInstance();
+      sid = prefs.getInt('current_store_id');
+    }
+    sid = _normalizeStoreId(sid);
+    if (sid != null) headers['X-Store-ID'] = sid.toString();
+
+    // Debug: log outgoing X-Store-ID header for this request (non-sensitive)
+    debugPrint('SalesService.createSale: X-Store-ID=${headers['X-Store-ID']}');
+
+    final response = await client.post(
       Uri.parse('$baseUrl/api/sales'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: jsonEncode(saleData),
     );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Failed to create sale');
+      throw Exception('Failed to create sale: ${response.statusCode}');
     }
   }
 
@@ -40,12 +62,21 @@ class SalesService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
 
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/sales'),
+    // Debug: log outgoing X-Store-ID for this request
+    debugPrint(
+        'SalesService.getSales: X-Store-ID=${headers['X-Store-ID']} uri=$storeId');
+
+    final uri = storeId != null
+        ? Uri.parse('$baseUrl/api/sales?store_id=$storeId')
+        : Uri.parse('$baseUrl/api/sales');
+
+    final response = await client.get(
+      uri,
       headers: headers,
     );
 
@@ -57,16 +88,30 @@ class SalesService {
     }
   }
 
-  Future<Map<String, dynamic>> getReceipt(int saleId) async {
+  Future<Map<String, dynamic>> getReceipt(int saleId, {int? storeId}) async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
-    final response = await http.get(
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    // Prefer explicit storeId param; otherwise use persisted current_store_id
+    int? sid = storeId;
+    if (sid == null) {
+      final prefs = await SharedPreferences.getInstance();
+      sid = prefs.getInt('current_store_id');
+    }
+    sid = _normalizeStoreId(sid);
+    if (sid != null) headers['X-Store-ID'] = sid.toString();
+
+    // Debug: log outgoing X-Store-ID for receipt request
+    debugPrint('SalesService.getReceipt: X-Store-ID=${headers['X-Store-ID']}');
+
+    final response = await client.get(
       Uri.parse('$baseUrl/api/receipts/$saleId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
     );
 
     if (response.statusCode == 200) {
@@ -80,22 +125,39 @@ class SalesService {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
+    storeId = _normalizeStoreId(storeId);
+
     final uri = storeId != null
         ? Uri.parse('$baseUrl/api/analytics/sales?store_id=$storeId')
         : Uri.parse('$baseUrl/api/analytics/sales');
 
-    final response = await http.get(
-      uri,
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
+    // Robustness: retry a couple of times for transient network/server issues
+    const maxAttempts = 3;
+    int attempt = 0;
+    while (true) {
+      attempt++;
+      try {
+        final response = await client.get(uri, headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        }).timeout(const Duration(seconds: 8));
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception('Failed to load sales analytics');
+        if (response.statusCode == 200) {
+          return jsonDecode(response.body);
+        } else {
+          throw Exception(
+              'Failed to load sales analytics: ${response.statusCode}');
+        }
+      } catch (e) {
+        // Catch common transient network errors and retry with small backoff
+        if (attempt >= maxAttempts) {
+          debugPrint('getSalesAnalytics: failed after $attempt attempts: $e');
+          rethrow;
+        }
+        debugPrint('getSalesAnalytics: attempt $attempt failed: $e — retrying');
+        await Future.delayed(Duration(milliseconds: 200 * attempt));
+        continue;
+      }
     }
   }
 }

@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mobile/providers/user_management_provider.dart';
 import 'package:mobile/screens/audit_logs_screen.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' as fr;
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/services/database_service.dart';
 import 'package:mobile/providers/auth_provider.dart';
@@ -33,7 +35,12 @@ import 'package:mobile/screens/system_settings_screen.dart';
 import 'package:mobile/screens/user_profile_screen.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'db/app_database.dart';
+import 'data/local/database_helper.dart';
+import 'data/remote/postgres_api_service.dart';
+import 'data/repositories/product_repository.dart';
+import 'data/repositories/transaction_repository.dart';
 import 'ui/sync_demo.dart';
+import 'ui/admin/sync_errors_screen.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:workmanager/workmanager.dart';
@@ -50,6 +57,9 @@ void main() {
 
   // Capture uncaught asynchronous errors
   runZonedGuarded(() async {
+    // Ensure Flutter bindings are initialized in the same zone as runApp
+    WidgetsFlutterBinding.ensureInitialized();
+
     // Ensure timezone database is initialized with Zimbabwe default
     try {
       await TimeService.instance.initialize();
@@ -62,7 +72,10 @@ void main() {
     try {
       if (Platform.isAndroid) {
         // Use centralized registration helper for testability
-        registerBackgroundWork(Workmanager());
+        // Use a shorter frequency and debug mode when running in debug builds
+        const freq = kDebugMode ? Duration(minutes: 15) : Duration(hours: 6);
+        registerBackgroundWork(Workmanager(),
+            frequency: freq, isInDebugMode: kDebugMode);
       }
     } catch (e) {
       debugPrint('WorkManager initialization failed: $e');
@@ -80,75 +93,101 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => InventoryProvider()),
-        ChangeNotifierProvider(create: (_) => PosProvider()),
-        ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
-        ChangeNotifierProvider(create: (_) => StoreProvider()),
-        ChangeNotifierProvider(create: (_) => UserManagementProvider()),
-        ChangeNotifierProvider(create: (_) => AuditProvider()),
-        ChangeNotifierProxyProvider<AuthProvider, SettingsProvider>(
-          create: (context) =>
-              SettingsProvider(authProvider: context.read<AuthProvider>()),
-          update: (context, authProvider, previous) =>
-              SettingsProvider(authProvider: authProvider),
+    return fr.ProviderScope(
+      child: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => AuthProvider()),
+
+          // Core services & repositories (must be created before providers that depend on them)
+          Provider(create: (_) => AuthService()),
+          Provider(create: (_) => DatabaseService()),
+          Provider(create: (_) => AppDatabase()),
+          // Offline-first local DB helper and repositories
+          Provider(create: (_) => DatabaseHelper()),
+          Provider(create: (_) => PostgresApiService()),
+          Provider(
+              create: (context) => ProductRepository(
+                  db: context.read<DatabaseHelper>(),
+                  api: context.read<PostgresApiService>())),
+          Provider(
+              create: (context) => TransactionRepository(
+                  db: context.read<DatabaseHelper>(),
+                  api: context.read<PostgresApiService>())),
+
+          // UI-level providers that depend on repositories
+          ChangeNotifierProvider(
+              create: (context) => InventoryProvider(
+                  productRepository: context.read<ProductRepository>(),
+                  dbHelper: context.read<DatabaseHelper>())),
+          ChangeNotifierProvider(
+              create: (context) => PosProvider(
+                  productRepository: context.read<ProductRepository>(),
+                  transactionRepository:
+                      context.read<TransactionRepository>())),
+
+          ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
+          ChangeNotifierProvider(create: (_) => StoreProvider()),
+          ChangeNotifierProvider(create: (_) => UserManagementProvider()),
+          ChangeNotifierProvider(create: (_) => AuditProvider()),
+          ChangeNotifierProxyProvider<AuthProvider, SettingsProvider>(
+            create: (context) =>
+                SettingsProvider(authProvider: context.read<AuthProvider>()),
+            update: (context, authProvider, previous) =>
+                SettingsProvider(authProvider: authProvider),
+          ),
+          ChangeNotifierProxyProvider<AuthProvider, UserProfileProvider>(
+            create: (context) =>
+                UserProfileProvider(authProvider: context.read<AuthProvider>()),
+            update: (context, authProvider, previous) =>
+                UserProfileProvider(authProvider: authProvider),
+          ),
+        ],
+        child: MaterialApp(
+          title: 'POS & Inventory',
+          theme: buildLightTheme(),
+          debugShowCheckedModeBanner: false,
+          home: const AuthWrapper(),
+          routes: {
+            '/login': (context) => const LoginScreenRedesign(),
+            '/login_redesign': (context) => const LoginScreenRedesign(),
+            '/home': (context) => const HomeScreen(),
+            '/inventory': (context) => const InventoryScreen(),
+            '/pos': (context) => const PosScreen(),
+            '/analytics': (context) => const AnalyticsScreen(),
+            '/analytics/events': (context) =>
+                const AnalyticsEventsDashboardScreen(),
+            '/add_product': (context) => const AddProductScreen(),
+            '/sales_history': (context) => const SalesHistoryScreen(),
+            '/store_management': (context) => const StoreManagementScreen(),
+            '/admin_management': (context) => const AdminManagementScreen(),
+            '/cashier_management': (context) => const CashierManagementScreen(),
+            '/settings': (context) => const SettingsScreen(),
+            '/user_settings': (context) => const UserSettingsScreen(),
+            '/store_settings': (context) => const StoreSettingsScreen(),
+            '/system_settings': (context) => const SystemSettingsScreen(),
+            '/user_profile': (context) => const UserProfileScreen(),
+            '/audit_logs': (context) => const AuditLogsScreen(),
+            '/sync_demo': (context) => const SyncDemoScreen(),
+            '/admin/sync-errors': (context) => const SyncErrorsScreen(),
+            // Dev preview routes
+            // '/components_demo': (context) => const ComponentsDemoScreen(),
+          },
+          onGenerateRoute: (settings) {
+            if (settings.name == '/edit_product') {
+              final product = settings.arguments as Map<String, dynamic>;
+              return MaterialPageRoute(
+                builder: (context) => EditProductScreen(product: product),
+              );
+            }
+            if (settings.name == '/receipt') {
+              final saleId = settings.arguments as int;
+              return MaterialPageRoute(
+                builder: (context) => ReceiptScreen(saleId: saleId),
+              );
+            }
+            return null;
+          },
         ),
-        ChangeNotifierProxyProvider<AuthProvider, UserProfileProvider>(
-          create: (context) =>
-              UserProfileProvider(authProvider: context.read<AuthProvider>()),
-          update: (context, authProvider, previous) =>
-              UserProfileProvider(authProvider: authProvider),
-        ),
-        Provider(create: (_) => AuthService()),
-        Provider(create: (_) => DatabaseService()),
-        Provider(create: (_) => AppDatabase()),
-      ],
-      child: MaterialApp(
-        title: 'POS & Inventory',
-        theme: buildLightTheme(),
-        debugShowCheckedModeBanner: false,
-        home: const AuthWrapper(),
-        routes: {
-          '/login': (context) => const LoginScreenRedesign(),
-          '/login_redesign': (context) => const LoginScreenRedesign(),
-          '/home': (context) => const HomeScreen(),
-          '/inventory': (context) => const InventoryScreen(),
-          '/pos': (context) => const PosScreen(),
-          '/analytics': (context) => const AnalyticsScreen(),
-          '/analytics/events': (context) =>
-              const AnalyticsEventsDashboardScreen(),
-          '/add_product': (context) => const AddProductScreen(),
-          '/sales_history': (context) => const SalesHistoryScreen(),
-          '/store_management': (context) => const StoreManagementScreen(),
-          '/admin_management': (context) => const AdminManagementScreen(),
-          '/cashier_management': (context) => const CashierManagementScreen(),
-          '/settings': (context) => const SettingsScreen(),
-          '/user_settings': (context) => const UserSettingsScreen(),
-          '/store_settings': (context) => const StoreSettingsScreen(),
-          '/system_settings': (context) => const SystemSettingsScreen(),
-          '/user_profile': (context) => const UserProfileScreen(),
-          '/audit_logs': (context) => const AuditLogsScreen(),
-          '/sync_demo': (context) => const SyncDemoScreen(),
-          // Dev preview routes
-          // '/components_demo': (context) => const ComponentsDemoScreen(),
-        },
-        onGenerateRoute: (settings) {
-          if (settings.name == '/edit_product') {
-            final product = settings.arguments as Map<String, dynamic>;
-            return MaterialPageRoute(
-              builder: (context) => EditProductScreen(product: product),
-            );
-          }
-          if (settings.name == '/receipt') {
-            final saleId = settings.arguments as int;
-            return MaterialPageRoute(
-              builder: (context) => ReceiptScreen(saleId: saleId),
-            );
-          }
-          return null;
-        },
       ),
     );
   }

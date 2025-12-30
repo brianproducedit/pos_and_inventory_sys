@@ -31,18 +31,26 @@ class UserManagementService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getUsersByStore(int storeId) async {
+  // Normalize store id: treat 0 as global (null)
+  int? _normalizeStoreId(int? id) => (id != null && id == 0) ? null : id;
+
+  Future<List<Map<String, dynamic>>> getUsersByStore(int? storeId) async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
+    storeId = _normalizeStoreId(storeId);
+
+    final uri = storeId != null
+        ? Uri.parse('$baseUrl/api/users?store_id=$storeId')
+        : Uri.parse('$baseUrl/api/users');
+
     final response = await http.get(
-      Uri.parse('$baseUrl/api/users?store_id=$storeId'),
+      uri,
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
     );
-
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       return data.map((item) => item as Map<String, dynamic>).toList();

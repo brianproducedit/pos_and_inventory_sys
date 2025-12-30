@@ -18,6 +18,12 @@ samples, guidance on mobile development, and a full API reference.
 
 flutter pub run build_runner build --delete-conflicting-outputs
 
+emporary (current session):
+$env:HTTP_PROXY='http://192.168.49.1:8282'
+$env:HTTPS_PROXY='http://192.168.49.1:8282'
+$env:NO_PROXY='localhost,127.0.0.1'
+
+
 Next steps (optional):
 
 Make the proxy persistent for future shells:
@@ -26,6 +32,8 @@ setx HTTP_PROXY "http://192.168.49.1:8282"
 setx HTTPS_PROXY "http://192.168.49.1:8282"
 setx NO_PROXY "localhost,127.0.0.1"
 Note: setx affects new shells only.
+
+flutter run -d R9AQC526130
 
 Push-Location 'c:/Users/k.off/Documents/Programming/Programming Projects/Flutter/pos_and_inventory_sys/flutter_app/mobile'; $env:HTTP_PROXY='http://192.168.49.1:8282'; $env:HTTPS_PROXY='http://192.168.49.1:8282'; $env:NO_PROXY='localhost,127.0.0.1'; flutter pub get --no-precompile; Pop-Location
 

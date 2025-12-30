@@ -81,7 +81,7 @@ Use the checklist below to track progress; check boxes indicate completed items.
   - Estimated: 1 week
   - Acceptance: migration + API spec + unit tests for ordering and idempotency
 
-- [ ] **Phase 2 — Server prototype (in-progress)**
+- [x] **Phase 2 — Server prototype (completed)**
   - [x] Implement `changes` table + `server_seq` incrementation and indexing (migration added)
   - [x] Update `/api/sync/changes` to accept `since_seq` and return ordered changes (router updated)
   - [x] Implement idempotent `/api/sync/push` with temp-id mapping (prototype applied, tests added)
@@ -89,8 +89,9 @@ Use the checklist below to track progress; check boxes indicate completed items.
   - [x] Integration tests for push/pull roundtrip and conflict handling (backend)
   - [x] Replay tooling: idempotent replay, create-skip, dry-run and CLI output tested
   - [x] Alembic migration hardening: guarded index/constraint ops for idempotency
-  - Estimated: 2–3 weeks (server prototype ongoing)
+  - Estimated: 2–3 weeks (server prototype completed)
   - Acceptance: integration tests demonstrating push/pull roundtrip, replay behavior, and migration idempotency
+  - **Notes:** All server-side tests pass locally; migrations are idempotent and the repo includes a CI workflow to validate repeated `alembic upgrade head` and a replay dry-run smoke test.
 
 ---
 
@@ -105,11 +106,11 @@ Use the checklist below to track progress; check boxes indicate completed items.
 ---
 
 ## 🔄 Progress update (2025-12-30)
-- **Completed:** Design, Change model, Alembic migration, /api sync router updates, and server-side prototype tests for push/pull. Alembic issues were fixed to be cross-dialect (SQLite dev and PostgreSQL prod).
-- **Current focus:** Triage and fix Flutter test failures (widget/provider tests) so we can proceed with the client prototype and end-to-end tests.
-- **Next:** Fix failing Flutter tests (AuthProvider injection and HttpClient mocks) → implement client local queue and background sync (Workmanager) → add integration tests for full push/pull roundtrip.
+- **Completed:** Design, Change model, Alembic migration, `/api` sync router updates, **server-side prototype tests for push/pull**, admin replay tooling, and **client pull integration (partial)**. Alembic issues were fixed to be cross-dialect (SQLite dev and PostgreSQL prod).
+- **Current focus:** Stabilize Flutter unit/widget tests and CI, finalize client-side test coverage, and push the feature branch / open a PR (the local branch was committed but a previous `git push` failed due to a transient network/DNS issue). A GitHub Actions job for mobile unit tests (`.github/workflows/flutter-unit-tests.yml`) and a shared test bootstrap (`test/test_helpers.dart`) were added to the repo to help stabilize CI runs.
+- **Next:** Re-run `git push` to publish the branch and open a PR (include the `PR_DRAFT.md` contents), expand client tests to cover push workflows and conflict resolution, and update remaining tests to use the centralized test helpers so CI runs deterministically.
 
-- **Recently completed:** Server prototype work now includes integration tests for push/pull, replay CLI and API with dry-run, and migration idempotency hardening. Backend tests pass locally and against local Postgres; a CI workflow has been added to validate migration idempotency and run replay smoke tests.
+- **Recently completed:** Server prototype work now includes integration tests for push/pull, replay CLI and API with dry-run, and migration idempotency hardening. Backend tests pass locally and against local Postgres; a CI workflow has been added to validate migration idempotency and run replay smoke tests. On the client side, `sync_meta` persistence, `PostgresApiService.fetchChangesSinceSeq(...)`, `PostgresSyncService.pullChangesSinceSeq()` and unit tests for pull behavior were implemented and are passing locally after test-harness fixes (sqflite ffi init, secure-storage mocking, JSON typing fixes).
 
 ---
 
@@ -138,13 +139,16 @@ Use the checklist below to track progress; check boxes indicate completed items.
 
 > Notes: Backend tests are green; Flutter widget tests currently show 4 failing tests (missing `AuthProvider` in test harness and a network mocking issue). I'm working on triaging those now and will update this document as each subtask completes.
 
-- [ ] **Phase 3 — Client prototype**
-  - [ ] Local change queue + per-change client_seq and checkpointing
+- [ ] **Phase 3 — Client prototype (in-progress)**
+  - [x] Add local checkpoint persistence (e.g., `sync_meta` table) and helpers to store `last_server_seq`
+  - [x] Implement `fetchChangesSinceSeq(...)` and `pullChangesSinceSeq()` to apply server change-log and commit `head_seq` atomically (unit tests added)
+  - [ ] Local change queue + per-change `client_seq` and checkpointing for outgoing pushes
   - [ ] Background worker integration (Workmanager) with batching and retry/backoff
   - [ ] UI for conflict handling, sync errors, and status
   - [ ] Optional: switch to Drift for typed local DB if needed
-  - Estimated: 2–3 weeks
-  - Acceptance: e2e test showing offline sale recorded locally and synced to server
+  - Estimated: 2–3 weeks (partial progress)
+  - Acceptance: e2e test showing offline sale recorded locally and synced to server; push flow and conflict handling validated in tests and CI
+  - **Notes / immediate next steps:** Stabilize Flutter tests in CI (sqflite FFI + plugin mocks), add integration tests for push/push-pull roundtrip, and push branch + open PR.
 
 - [ ] **Phase 4 — E2E tests & QA**
   - [ ] Simulate offline cases, forks, double-inserts, retries, and reconciliation
@@ -185,9 +189,11 @@ Use the checklist below to track progress; check boxes indicate completed items.
 ---
 
 ## 📎 Next steps (short-term)
-1. Audit the repo to list sync-relevant files and models.
-2. Draft the change-log schema and a minimal sync API spec.
-3. Prototype a push/pull roundtrip with a small entity (e.g., products).
+1. Push local branch (`feat/sync-replay-migrations`) and open a PR using `PR_DRAFT.md` (or I can open the PR for you once the remote is reachable).
+2. Add a Flutter CI job that initializes `sqflite_common_ffi` and provides plugin mocks (notably `flutter_secure_storage`) so client unit tests run deterministically in CI.
+3. Stabilize and expand client tests: add push-path tests, conflict scenarios, and an end-to-end push/pull roundtrip test (mock server or test Postgres instance).
+4. Harden test bootstrap: move `sqflite_common_ffi` init and plugin mock registration into a shared test helper to avoid duplication across tests.
+5. Once tests and CI are green, draft the PR description, link the CI runs, and request a review for merge and staged rollout.
 
 ---
 

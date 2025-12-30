@@ -48,4 +48,7 @@ def test_switch_store_creates_analytics_event():
     assert ae is not None
     assert ae.to_store_id == store_id
     assert ae.user_id is not None
+    assert ae.duration_ms is not None
+    assert ae.metadata_json is not None
+    assert 'success' in ae.metadata_json
     db.close()

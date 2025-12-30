@@ -15,8 +15,14 @@ class UserManagementProvider with ChangeNotifier {
   StoreProvider? _storeProvider;
   int? _lastStoreId;
 
+  int? _parseStoreId(dynamic id) {
+    if (id == null) return null;
+    if (id is int) return id;
+    return int.tryParse(id.toString());
+  }
+
   void _onStoreChanged() {
-    final newId = _storeProvider?.currentStore?['id'] as int?;
+    final newId = _parseStoreId(_storeProvider?.currentStore?['id']);
     if (newId != _lastStoreId) {
       _lastStoreId = newId;
       unawaited(loadUsers());
@@ -34,7 +40,7 @@ class UserManagementProvider with ChangeNotifier {
       _storeProvider!.removeListener(_onStoreChanged);
     }
     _storeProvider = storeProvider;
-    _lastStoreId = _storeProvider?.currentStore?['id'] as int?;
+    _lastStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
     _storeProvider!.addListener(_onStoreChanged);
   }
 
@@ -46,7 +52,8 @@ class UserManagementProvider with ChangeNotifier {
     try {
       // Check if we have store context and user role to determine filtering
       if (_storeProvider?.currentStore != null) {
-        final currentStoreId = _storeProvider!.currentStore!['id'];
+        final currentStoreId =
+            _parseStoreId(_storeProvider!.currentStore!['id']);
         _users = await _userService.getUsersByStore(currentStoreId);
       } else {
         // Fallback to all users (for superadmin or when no store context)

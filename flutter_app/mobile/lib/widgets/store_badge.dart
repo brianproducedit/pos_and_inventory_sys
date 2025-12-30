@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:mobile/providers/auth_provider.dart';
 
 class StoreBadge extends StatelessWidget {
   final Map<String, dynamic>? store;
@@ -185,6 +187,14 @@ class StoreBadge extends StatelessWidget {
   }
 
   Widget _buildAllStoresBadge(BuildContext context) {
+    // Check role to show limited access hint for non-admins
+    final role = Provider.of<AuthProvider>(context, listen: false).role;
+    final isAdminOrSuper = role == 'superadmin' || role == 'admin';
+
+    final label = isAdminOrSuper
+        ? 'Viewing: All Stores'
+        : 'Viewing: All Stores (limited access)';
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -219,7 +229,7 @@ class StoreBadge extends StatelessWidget {
             const SizedBox(width: 6),
             Flexible(
               child: Text(
-                'Viewing: All Stores',
+                label,
                 style: (compact
                         ? Theme.of(context).textTheme.bodySmall
                         : Theme.of(context).textTheme.bodyMedium)
@@ -260,6 +270,12 @@ class StoreIndicator extends StatelessWidget {
     // Treat null or id==0 as 'All Stores'
     if (store == null || store?['id'] == 0) {
       // Show explicit indicator for 'All Stores' (global view)
+      final role = Provider.of<AuthProvider>(context, listen: false).role;
+      final isAdminOrSuper = role == 'superadmin' || role == 'admin';
+      final label = isAdminOrSuper
+          ? 'Viewing: All Stores'
+          : 'Viewing: All Stores (limited access)';
+
       return Semantics(
         label: 'Viewing All Stores',
         child: Container(
@@ -290,7 +306,7 @@ class StoreIndicator extends StatelessWidget {
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
-                  'Viewing: All Stores',
+                  label,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: Theme.of(context).colorScheme.onSurface,

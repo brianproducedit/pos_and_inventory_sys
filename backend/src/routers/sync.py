@@ -4,13 +4,45 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.auth import get_current_active_user
-from src.models import Product, AuditLog, Store, User, UserRole
+from src.models import Product, AuditLog, Store, User, UserRole, Change
 from src.auth import get_password_hash
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
+
+# Helper to create Change rows safely across DB schemas where optional columns
+# (like client_temp_id) might not exist yet (older deployments or test DBs).
+# Filters provided kwargs to only columns present in the Change table.
+def _make_change(db, **fields):
+    # Use inspector to detect actual table columns on the current DB connection
+    from sqlalchemy import inspect, func
+    inspector = inspect(db.bind)
+    try:
+        existing_cols = set(c['name'] for c in inspector.get_columns('changes'))
+    except Exception:
+        # Fallback to model columns if inspection fails
+        existing_cols = set(c.name for c in Change.__table__.columns)
+
+    # If the DB doesn't auto-populate server_seq (e.g., create_all without trigger),
+    # compute and set it so inserts succeed.
+    if 'server_seq' in existing_cols and 'server_seq' not in fields:
+        try:
+            next_seq = db.query(func.coalesce(func.max(Change.server_seq), 0) + 1).scalar()
+            fields['server_seq'] = next_seq
+        except Exception:
+            # If computing next_seq fails, proceed without setting it and let DB handle or raise
+            pass
+
+    filtered = {k: v for k, v in fields.items() if k in existing_cols}
+
+    ch = Change(**filtered)
+    db.add(ch)
+    db.commit()
+    db.refresh(ch)
+    return ch
+
 
 # Simple sync schemas
 class SyncChange(BaseModel):
@@ -39,8 +71,40 @@ class SyncPushResponse(BaseModel):
 
 
 @router.get("/api/sync/changes")
-def get_changes(since: datetime = Query(...), types: Optional[str] = Query(None), db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
-    """Return changed records since `since` timestamp. Supports `products` type currently."""
+def get_changes(since: Optional[datetime] = Query(None), since_seq: Optional[int] = Query(None), limit: int = Query(500), types: Optional[str] = Query(None), db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
+    """Return changed records since `since` timestamp or `since_seq` server sequence.
+    Backwards compatible: if `since_seq` is provided, use the `changes` table; else fall back to timestamp-based changes for existing clients."""
+    if since_seq is not None:
+        # Use changes table for efficient ordered pulls
+        q = db.query(Change).filter(Change.server_seq > since_seq)
+        if types:
+            requested_types = set(types.split(','))
+            q = q.filter(Change.entity_type.in_(requested_types))
+        q = q.order_by(Change.server_seq.asc()).limit(limit)
+        rows = q.all()
+
+        changes = []
+        for r in rows:
+            changes.append({
+                'server_seq': r.server_seq,
+                'entity_type': r.entity_type,
+                'entity_id': r.entity_id,
+                'operation': r.operation,
+                'payload': r.payload,
+                'origin_client_id': r.origin_client_id,
+                'client_temp_id': r.client_temp_id,
+                'created_at': r.created_at.isoformat() if r.created_at else None,
+            })
+
+        # head_seq: current highest seq
+        head = db.query(Change.server_seq).order_by(Change.server_seq.desc()).first()
+        head_seq = head[0] if head else since_seq
+        return {'changes': changes, 'head_seq': head_seq}
+
+    # Backwards compatible timestamp-based response
+    if not since:
+        raise HTTPException(status_code=400, detail="Missing 'since' timestamp or 'since_seq' parameter")
+
     requested_types = set(types.split(',')) if types else set()
     changes = {}
 
@@ -74,7 +138,6 @@ def get_changes(since: datetime = Query(...), types: Optional[str] = Query(None)
 
     return {'changes': changes, 'server_time': datetime.utcnow().isoformat()}
 
-
 @router.post("/api/sync/push")
 def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)) -> SyncPushResponse:
     """Apply client changes (create/update/delete). Returns applied changes, conflicts, and mapping of temp ids to server ids."""
@@ -88,6 +151,23 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
             # Create
             if ch.operation == 'create':
                 data = ch.data or {}
+                # Validate required fields to avoid DB integrity errors
+                if data.get('store_id') is None:
+                    raise HTTPException(status_code=400, detail=f"Product create missing required field 'store_id' for temp_id {ch.temp_id or '<unknown>'}")
+
+                # Idempotency: if client supplied a temp_id and we've already applied it, return existing mapping
+                if ch.temp_id:
+                    try:
+                        existing = db.query(Change).filter(Change.client_temp_id == ch.temp_id, Change.origin_client_id == payload.client_id, Change.entity_type == 'product', Change.operation == 'create').first()
+                        if existing and existing.entity_id:
+                            # Map temp to existing server id and skip creating a duplicate
+                            id_map[ch.temp_id] = int(existing.entity_id)
+                            applied.append({'resource_type': 'product', 'operation': 'create', 'id': int(existing.entity_id), 'server_seq': existing.server_seq})
+                            continue
+                    except Exception:
+                        # If DB schema doesn't have client_temp_id (pre-migration), ignore dedicated idempotency and proceed
+                        existing = None
+
                 p = Product(
                     name=data.get('name') or 'Unnamed',
                     description=data.get('description'),
@@ -99,7 +179,14 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 db.add(p)
                 db.commit()
                 db.refresh(p)
-                applied.append({'resource_type': 'product', 'operation': 'create', 'id': p.id})
+                # Record change (best-effort; if change recording fails due to older schema, continue)
+                try:
+                    ch_entry = _make_change(db, entity_type='product', entity_id=str(p.id), operation='create', payload={'data': data}, client_temp_id=ch.temp_id, origin_client_id=payload.client_id)
+                    applied.append({'resource_type': 'product', 'operation': 'create', 'id': p.id, 'server_seq': ch_entry.server_seq})
+                except Exception:
+                    db.rollback()
+                    applied.append({'resource_type': 'product', 'operation': 'create', 'id': p.id})
+
                 if ch.temp_id:
                     id_map[ch.temp_id] = p.id
 
@@ -138,7 +225,13 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                         setattr(p, k, v)
                 db.commit()
                 db.refresh(p)
-                applied.append({'resource_type': 'product', 'operation': 'update', 'id': p.id})
+                # Record change (best-effort)
+                try:
+                    ch_entry = _make_change(db, entity_type='product', entity_id=str(p.id), operation='update', payload={'data': data}, origin_client_id=payload.client_id)
+                    applied.append({'resource_type': 'product', 'operation': 'update', 'id': p.id, 'server_seq': ch_entry.server_seq})
+                except Exception:
+                    db.rollback()
+                    applied.append({'resource_type': 'product', 'operation': 'update', 'id': p.id})
 
             elif ch.operation == 'delete':
                 if not ch.id:
@@ -157,7 +250,17 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 al = AuditLog(user_id=current_user.id, action='DELETE_PRODUCT', resource_type='product', resource_id=p.id, details=f"Deleted via sync by client {payload.client_id}")
                 db.add(al)
                 db.commit()
-                applied.append({'resource_type': 'product', 'operation': 'delete', 'id': p.id})
+                # Record change (best-effort)
+                try:
+                    ch_entry = _make_change(db, entity_type='product', entity_id=str(p.id), operation='delete', payload={}, origin_client_id=payload.client_id)
+                    applied.append({'resource_type': 'product', 'operation': 'delete', 'id': p.id, 'server_seq': ch_entry.server_seq})
+                except Exception:
+                    db.rollback()
+                    applied.append({'resource_type': 'product', 'operation': 'delete', 'id': p.id})
+
+            else:
+                conflicts.append(SyncConflict(resource_type='product', id=ch.id, message='Operation not supported for product').dict())
+                continue
 
         # STORES
         elif ch.resource_type == 'store':
@@ -168,6 +271,11 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 db.commit()
                 db.refresh(s)
                 applied.append({'resource_type': 'store', 'operation': 'create', 'id': s.id})
+                # Record change
+                try:
+                    ch_entry = _make_change(db, entity_type='store', entity_id=str(s.id), operation='create', payload={'data': data}, client_temp_id=ch.temp_id, origin_client_id=payload.client_id)
+                except Exception:
+                    db.rollback()
                 if ch.temp_id:
                     id_map[ch.temp_id] = s.id
 
@@ -191,7 +299,12 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                         setattr(s, k, v)
                 db.commit()
                 db.refresh(s)
-                applied.append({'resource_type': 'store', 'operation': 'update', 'id': s.id})
+                try:
+                    ch_entry = _make_change(db, entity_type='store', entity_id=str(s.id), operation='update', payload={'data': data}, origin_client_id=payload.client_id)
+                    applied.append({'resource_type': 'store', 'operation': 'update', 'id': s.id, 'server_seq': ch_entry.server_seq})
+                except Exception:
+                    db.rollback()
+                    applied.append({'resource_type': 'store', 'operation': 'update', 'id': s.id})
 
             elif ch.operation == 'delete':
                 if not ch.id:
@@ -207,7 +320,16 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 al = AuditLog(user_id=current_user.id, action='DELETE_STORE', resource_type='store', resource_id=s.id, details=f"Deleted via sync by client {payload.client_id}")
                 db.add(al)
                 db.commit()
-                applied.append({'resource_type': 'store', 'operation': 'delete', 'id': s.id})
+                try:
+                    ch_entry = _make_change(db, entity_type='store', entity_id=str(s.id), operation='delete', payload={}, origin_client_id=payload.client_id)
+                    applied.append({'resource_type': 'store', 'operation': 'delete', 'id': s.id, 'server_seq': ch_entry.server_seq})
+                except Exception:
+                    db.rollback()
+                    applied.append({'resource_type': 'store', 'operation': 'delete', 'id': s.id})
+
+            else:
+                conflicts.append(SyncConflict(resource_type='store', id=ch.id, message='Operation not supported for store').dict())
+                continue
 
         # USERS
         elif ch.resource_type == 'user':
@@ -231,6 +353,11 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                     db.commit()
                     db.refresh(u)
                     applied.append({'resource_type': 'user', 'operation': 'create', 'id': u.id})
+                    # Record change
+                    try:
+                        ch_entry = _make_change(db, entity_type='user', entity_id=str(u.id), operation='create', payload={'data': data}, client_temp_id=ch.temp_id, origin_client_id=payload.client_id)
+                    except Exception:
+                        db.rollback()
                     if ch.temp_id:
                         id_map[ch.temp_id] = u.id
                 except IntegrityError:
@@ -287,7 +414,13 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 db.commit()
                 applied.append({'resource_type': 'user', 'operation': 'delete', 'id': u.id})
 
+            else:
+                conflicts.append(SyncConflict(resource_type='user', id=ch.id, message='Operation not supported for user').dict())
+                continue
+
         else:
             conflicts.append(SyncConflict(resource_type=ch.resource_type, id=ch.id, message='Resource type not supported yet').dict())
             continue
+        
+
     return SyncPushResponse(applied=applied, conflicts=conflicts, id_map=id_map)

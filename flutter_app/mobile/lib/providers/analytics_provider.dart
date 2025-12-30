@@ -27,8 +27,14 @@ class AnalyticsProvider with ChangeNotifier {
   // Track last seen store id to avoid redundant refreshes when provider notifies
   int? _lastStoreId;
 
+  int? _parseStoreId(dynamic id) {
+    if (id == null) return null;
+    if (id is int) return id;
+    return int.tryParse(id.toString());
+  }
+
   void _onStoreChanged() {
-    final newId = _storeProvider?.currentStore?['id'] as int?;
+    final newId = _parseStoreId(_storeProvider?.currentStore?['id']);
     if (newId != _lastStoreId) {
       _lastStoreId = newId;
       // Fire-and-forget refresh for new store context
@@ -94,9 +100,11 @@ class AnalyticsProvider with ChangeNotifier {
     }
     _storeProvider = storeProvider;
     // Keep local lastStoreId in sync
-    _lastStoreId = _storeProvider?.currentStore?['id'] as int?;
+    _lastStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
     // Register listener to refresh analytics when store changes
     _storeProvider!.addListener(_onStoreChanged);
+    // Initial load for the current store context
+    unawaited(loadAnalyticsForCurrentStore());
   }
 
   void setAuthProvider(AuthProvider authProvider) {
@@ -106,7 +114,7 @@ class AnalyticsProvider with ChangeNotifier {
   Future<void> loadAnalyticsForCurrentStore() async {
     int? storeId;
     if (_storeProvider?.currentStore != null) {
-      storeId = _storeProvider!.currentStore!['id'];
+      storeId = _parseStoreId(_storeProvider!.currentStore!['id']);
     }
     // Update last seen id
     _lastStoreId = storeId;

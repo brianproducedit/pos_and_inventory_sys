@@ -15,6 +15,9 @@ class ProductService {
     return prefs.getString('access_token');
   }
 
+  // Normalize store id: treat 0 as global (null)
+  int? _normalizeStoreId(int? id) => (id != null && id == 0) ? null : id;
+
   Future<List<Map<String, dynamic>>> getProducts({int? storeId}) async {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
@@ -24,9 +27,14 @@ class ProductService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
+
+    // Debug: log outgoing X-Store-ID header (non-sensitive)
+    debugPrint(
+        'ProductService.getProducts: X-Store-ID=${headers['X-Store-ID']}');
 
     final response = await _client.get(
       Uri.parse('$baseUrl/api/products'),
@@ -51,9 +59,14 @@ class ProductService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
+
+    // Debug: log outgoing X-Store-ID header (non-sensitive)
+    debugPrint(
+        'ProductService.getAllProducts: X-Store-ID=${headers['X-Store-ID']}');
 
     final uri =
         Uri.parse('$baseUrl/api/products/all').replace(queryParameters: {
@@ -89,6 +102,7 @@ class ProductService {
       final prefs = await SharedPreferences.getInstance();
       sid = prefs.getInt('current_store_id');
     }
+    sid = _normalizeStoreId(sid);
     if (sid != null) {
       headers['X-Store-ID'] = sid.toString();
     }
@@ -120,6 +134,7 @@ class ProductService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
@@ -145,6 +160,7 @@ class ProductService {
       'Authorization': 'Bearer $token',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
@@ -181,6 +197,7 @@ class ProductService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }
@@ -207,6 +224,7 @@ class ProductService {
       'Content-Type': 'application/json',
     };
 
+    storeId = _normalizeStoreId(storeId);
     if (storeId != null) {
       headers['X-Store-ID'] = storeId.toString();
     }

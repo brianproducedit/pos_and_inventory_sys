@@ -68,10 +68,10 @@ def test_summary_with_daily_series():
     data = r.json()
     assert data.get('labels') is not None
     assert len(data['labels']) == 3
-    # find store 1 series
+    # find the series for the store we created
     found = None
     for b in data['by_store']:
-        if b['store_id'] == 1:
+        if b['store_id'] == tid:
             found = b
             break
     assert found is not None

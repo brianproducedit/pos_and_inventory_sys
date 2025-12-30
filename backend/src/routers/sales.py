@@ -95,10 +95,12 @@ async def get_receipt(
     db: Session = Depends(get_db)
 ):
     """Get receipt for a sale in the current store"""
-    sale = db.query(Sale).filter(
-        Sale.id == sale_id,
-        Sale.store_id == store_context.store_id
-    ).first()
+    # When store_context.store_id is None (All Stores), do not filter by store_id
+    sale_q = db.query(Sale).filter(Sale.id == sale_id)
+    if store_context.store_id is not None:
+        sale_q = sale_q.filter(Sale.store_id == store_context.store_id)
+
+    sale = sale_q.first()
 
     if not sale:
         raise HTTPException(status_code=404, detail="Sale not found")
@@ -146,8 +148,12 @@ async def read_sales(
     store_context: StoreContext = Depends(require_store_access),
     db: Session = Depends(get_db)
 ):
-    """Get all sales for the current store"""
-    sales = db.query(Sale).filter(Sale.store_id == store_context.store_id).all()
+    """Get all sales for the current store (or all stores when store_id is None)"""
+    sales_q = db.query(Sale)
+    if store_context.store_id is not None:
+        sales_q = sales_q.filter(Sale.store_id == store_context.store_id)
+
+    sales = sales_q.all()
     return [SaleResponse.from_orm(sale) for sale in sales]
 
 # Add analytics endpoint

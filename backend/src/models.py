@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, ForeignKey, Text, Enum, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import enum
@@ -170,6 +170,24 @@ class AuditLog(Base):
     # Relationships
     user = relationship("User", backref="audit_logs")
     store = relationship("Store", backref="audit_logs")
+
+class Change(Base):
+    """Append-only change log for sync.
+
+    Entries are monotonically ordered by `server_seq` which can be used by
+    clients as a checkpoint token when pulling changes.
+    """
+    __tablename__ = "changes"
+    id = Column(Integer, primary_key=True, index=True)
+    server_seq = Column(Integer, nullable=False, unique=True, index=True)
+    entity_type = Column(String, nullable=False)
+    entity_id = Column(String, nullable=True)
+    operation = Column(String, nullable=False)  # 'create' | 'update' | 'delete'
+    payload = Column(JSON)
+    client_temp_id = Column(String, nullable=True)
+    origin_client_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 
 class AnalyticsEvent(Base):
     __tablename__ = "analytics_events"

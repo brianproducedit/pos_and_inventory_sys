@@ -75,8 +75,14 @@ class AuditProvider with ChangeNotifier {
   StoreProvider? _storeProvider;
   int? _lastStoreId;
 
+  int? _parseStoreId(dynamic id) {
+    if (id == null) return null;
+    if (id is int) return id;
+    return int.tryParse(id.toString());
+  }
+
   void _onStoreChanged() {
-    final newId = _storeProvider?.currentStore?['id'] as int?;
+    final newId = _parseStoreId(_storeProvider?.currentStore?['id']);
     if (newId != _lastStoreId) {
       _lastStoreId = newId;
       // Refresh audit logs when store context changes
@@ -89,7 +95,7 @@ class AuditProvider with ChangeNotifier {
       _storeProvider!.removeListener(_onStoreChanged);
     }
     _storeProvider = storeProvider;
-    _lastStoreId = _storeProvider?.currentStore?['id'] as int?;
+    _lastStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
     _storeProvider!.addListener(_onStoreChanged);
   }
 

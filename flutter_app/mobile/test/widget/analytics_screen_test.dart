@@ -35,6 +35,19 @@ class FakeAnalyticsProvider extends AnalyticsProvider {
           'created_at': '2025-12-22'
         }
       ];
+
+  // Prevent any network or background activity during tests
+  @override
+  void setStoreProvider(storeProvider) {}
+
+  @override
+  void setAuthProvider(authProvider) {}
+
+  @override
+  Future<void> loadAnalytics({int? storeId}) async {
+    // no-op: data provided by overridden getters
+    return;
+  }
 }
 
 class FakeAuth extends AuthProvider {
@@ -52,6 +65,9 @@ class FakeInventory extends InventoryProvider {
 void main() {
   testWidgets('Analytics screen shows key metrics and top products',
       (tester) async {
+    // Initialize test helpers (mock SharedPreferences and HttpClient)
+    initializeTestHelpersOnce();
+
     final analytics = FakeAnalyticsProvider();
     final auth = FakeAuth();
     final inventory = FakeInventory();

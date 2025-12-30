@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile/sync/sync_background.dart';
 import 'package:mobile/sync/sync_service.dart';
+import 'test_helpers.dart';
 
 class FakeDb {
   bool closed = false;
@@ -23,6 +25,8 @@ class FakeSyncService {
 }
 
 void main() {
+  initializeTestHelpersOnce();
+
   test('runBackgroundTask uses injected factories and closes DB', () async {
     final fakeDb = FakeDb();
 
@@ -56,6 +60,37 @@ void main() {
     expect(result, isFalse);
     expect((fakeDb as FakeDb).closed, isTrue);
   });
+
+  test('runBackgroundTask prefers syncPendingChanges when available', () async {
+    final fakeDb = FakeDb();
+    Future<FakeDb> openDb() async => fakeDb;
+
+    final service = _FullSyncService();
+
+    final result = await runBackgroundTask(
+      openDb: () async => fakeDb as dynamic,
+      syncServiceFactory: (db) => service as dynamic,
+    );
+
+    expect(result, isTrue);
+    expect(service.syncCalled, isTrue);
+    expect(service.pullCalled, isTrue);
+    expect((fakeDb as FakeDb).closed, isTrue);
+  });
+}
+
+class _FullSyncService {
+  bool syncCalled = false;
+  bool pullCalled = false;
+
+  Future<bool> syncPendingChanges() async {
+    syncCalled = true;
+    return true;
+  }
+
+  Future<void> pullChanges({required DateTime since}) async {
+    pullCalled = true;
+  }
 }
 
 class _BadSyncService {

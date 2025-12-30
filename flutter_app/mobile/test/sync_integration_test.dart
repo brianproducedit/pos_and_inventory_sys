@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
+import 'test_utils/fake_http_client.dart';
 import 'package:mobile/sync/sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -21,6 +22,13 @@ class _FakeDb {
   Future<int> deleteQueueItem(int id) async {
     deletedQueueIds.add(id);
     queue.removeWhere((q) => q.id == id);
+    return 1;
+  }
+
+  Future<int> updateQueuePayload(int id, String payloadJson) async {
+    final idx = queue.indexWhere((q) => q.id == id);
+    if (idx == -1) return 0;
+    queue[idx] = _FakeQueueItem(queue[idx].id, payloadJson);
     return 1;
   }
 
@@ -47,10 +55,38 @@ class _FakeDb {
     }
     return 1;
   }
+
+  Future<int> updateQueuePayloadNotUsedByOtherTestsOnlyForDocs() async => 1;
 }
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('attachStoreToPendingCreates updates pending product creates', () async {
+    final fakeDb = _FakeDb();
+
+    final payload1 = jsonEncode({
+      'resource_type': 'product',
+      'operation': 'create',
+      'temp_id': 'tmp-a',
+      'data': {'name': 'Local', 'price': 2.0}
+    });
+    final payload2 = jsonEncode({
+      'resource_type': 'product',
+      'operation': 'update',
+      'id': 201,
+      'data': {'name': 'ServerEdit'}
+    });
+    fakeDb.queue.add(_FakeQueueItem(1, payload1));
+    fakeDb.queue.add(_FakeQueueItem(2, payload2));
+    final svc = SyncService(fakeDb as dynamic);
+    final updated = await svc.attachStoreToPendingCreates(storeId: 5);
+    expect(updated, 1);
+    final updatedPayload =
+        fakeDb.queue.firstWhere((q) => q.id == 1).payloadJson;
+    final p = jsonDecode(updatedPayload) as Map<String, dynamic>;
+    expect(p['data']['store_id'], 5);
+  });
 
   test('pushChanges applies id_map and clears queue', () async {
     final fakeDb = _FakeDb();
@@ -60,24 +96,29 @@ void main() {
       'resource_type': 'product',
       'operation': 'create',
       'temp_id': 'tmp-1',
-      'data': {'name': 'Widget', 'price': 1.23, 'stock_quantity': 5}
+      'data': {
+        'name': 'Widget',
+        'price': 1.23,
+        'stock_quantity': 5,
+        'store_id': 1
+      }
     });
     fakeDb.queue.add(_FakeQueueItem(11, payload));
 
-    final mockClient = MockClient((request) async {
-      if (request.url.path.endsWith('/api/sync/push')) {
-        return http.Response(
-            jsonEncode({
-              'applied': [
-                {'operation': 'create', 'id': 101}
-              ],
-              'id_map': {'tmp-1': 101},
-              'conflicts': []
-            }),
-            200);
-      }
-      return http.Response('{}', 200);
+    final builder = FakeHttpClient();
+    builder.when('/api/sync/push', (request) async {
+      return http.Response(
+          jsonEncode({
+            'applied': [
+              {'operation': 'create', 'id': 101}
+            ],
+            'id_map': {'tmp-1': 101},
+            'conflicts': []
+          }),
+          200,
+          headers: {'content-type': 'application/json'});
     });
+    final mockClient = builder.build();
 
     final svc = SyncService(fakeDb as dynamic, httpClient: mockClient);
 
@@ -88,27 +129,27 @@ void main() {
   });
 
   test('pullChanges inserts server products', () async {
-    final mockClient = MockClient((request) async {
-      if (request.url.path.endsWith('/api/sync/changes')) {
-        return http.Response(
-            jsonEncode({
-              'changes': {
-                'products': [
-                  {
-                    'data': {
-                      'name': 'Server Product',
-                      'price': 9.99,
-                      'stock_quantity': 10,
-                      'store_id': 1
-                    }
+    final builder = FakeHttpClient();
+    builder.when('/api/sync/changes', (request) async {
+      return http.Response(
+          jsonEncode({
+            'changes': {
+              'products': [
+                {
+                  'data': {
+                    'name': 'Server Product',
+                    'price': 9.99,
+                    'stock_quantity': 10,
+                    'store_id': 1
                   }
-                ]
-              }
-            }),
-            200);
-      }
-      return http.Response('{}', 200);
+                }
+              ]
+            }
+          }),
+          200,
+          headers: {'content-type': 'application/json'});
     });
+    final mockClient = builder.build();
 
     final fakeDb = _FakeDb();
     SharedPreferences.setMockInitialValues({});

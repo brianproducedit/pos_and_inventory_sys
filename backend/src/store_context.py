@@ -168,6 +168,15 @@ def get_store_context(
     # Try to get store_id from header first
     store_id_header = request.headers.get('X-Store-ID')
 
+    # Diagnostic logging to help debug 403s related to store access
+    try:
+        # Note: request.client may be None in some test contexts
+        client_ip = request.client.host if request.client else 'unknown'
+    except Exception:
+        client_ip = 'unknown'
+    debug_info = f"get_store_context: user_id={getattr(current_user, 'id', None)} user_store_id={getattr(current_user, 'store_id', None)} header={store_id_header} client_ip={client_ip} path={request.url.path}"
+    print(debug_info)
+
     if store_id_header:
         try:
             current_store_id = int(store_id_header)

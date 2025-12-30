@@ -43,6 +43,19 @@ class _PosScreenState extends State<PosScreen> {
       }
       posProvider.setStoreProvider(storeProvider);
 
+      // Set auth provider for role-aware product loading
+      final auth = context.read<AuthProvider>();
+      posProvider.setAuthProvider(auth);
+
+      // Prevent non-admins from being left on All Stores: fallback to myStore if needed
+      if (storeProvider.currentStore == null &&
+          auth.role != 'superadmin' &&
+          auth.role != 'admin') {
+        if (storeProvider.myStores.isNotEmpty) {
+          await storeProvider.switchStore(storeProvider.myStores.first);
+        }
+      }
+
       await posProvider.loadProducts();
     });
   }

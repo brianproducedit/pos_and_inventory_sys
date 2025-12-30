@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/services/error_mapper.dart';
@@ -61,17 +62,22 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       // Log raw error for diagnostics
       debugPrint('Login error: $e');
 
-      final friendly =
-          ErrorMapper.friendlyMessage(e is Map ? e : (e.toString()));
+      // Support both legacy thrown Maps and the new AuthException
+      final friendly = ErrorMapper.friendlyMessage(
+          e is Map ? e : (e is AuthException ? e : e.toString()));
 
       setState(() {
         _errorMessage = friendly;
       });
 
       // If server reports invalid credentials, clear and focus password field for quick retry
-      if (e is Map) {
-        final code = e['code'];
-        final message = (e['message'] ?? '').toString().toLowerCase();
+      dynamic errObj;
+      if (e is Map) errObj = e;
+      if (e is AuthException) errObj = e.toMap();
+
+      if (errObj is Map) {
+        final code = errObj['code'];
+        final message = (errObj['message'] ?? '').toString().toLowerCase();
         if (code == 400 ||
             message.contains('incorrect') ||
             message.contains('password')) {

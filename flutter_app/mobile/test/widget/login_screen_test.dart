@@ -4,11 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:mobile/screens/login_screen_redesign.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/services/auth_service.dart';
 
 class FakeAuthProvider extends AuthProvider {
   @override
   Future<void> login(String username, String password) async {
-    throw {'code': 400, 'message': 'incorrect username or password'};
+    throw AuthException(400, 'incorrect username or password');
   }
 }
 

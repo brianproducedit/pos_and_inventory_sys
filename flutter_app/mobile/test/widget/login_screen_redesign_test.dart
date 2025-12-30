@@ -4,14 +4,14 @@ import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/screens/login_screen_redesign.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/theme/tokens.dart';
-
+import 'package:mobile/services/auth_service.dart';
 // import '../accessibility/store_management_accessibility_test.dart';
 
 class TestAuth extends AuthProvider {
   @override
   Future<void> login(String username, String password) async {
     if (username == 'demo' && password == 'password') return;
-    throw {'code': 'INVALID_PASSWORD'};
+    throw AuthException('INVALID_PASSWORD', 'Incorrect password');
   }
 }
 

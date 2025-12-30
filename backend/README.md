@@ -6,6 +6,7 @@
 3. Install dependencies: `pip install -r requirements.txt`
 4. Copy `.env.example` to `.env` and fill in actual values
 5. Run: `uvicorn src.main:app --reload` or `python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload`
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
 ## Environment Variables
 - `DATABASE_URL`: Database connection string

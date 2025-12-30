@@ -10,6 +10,7 @@ import 'store_settings_screen.dart';
 import 'user_settings_screen.dart';
 import 'system_settings_screen.dart';
 import 'user_profile_screen.dart';
+import '../ui/sync_demo.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -18,6 +19,8 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     final role = authProvider.role ?? 'cashier';
+    // Debug: log role so we can verify Settings visibility on device
+    debugPrint('SettingsScreen built, role=$role');
 
     return Scaffold(
       appBar: AppBar(
@@ -92,6 +95,30 @@ class SettingsScreen extends StatelessWidget {
               () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SystemSettingsScreen()),
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 16),
+
+          // Sync demo (admin & superadmin)
+          if (role == 'superadmin' || role == 'admin') ...[
+            _buildSettingsCard(
+              context,
+              'Sync Errors',
+              'View and resolve sync conflicts',
+              Icons.error_outline,
+              () => Navigator.pushNamed(context, '/admin/sync-errors'),
+            ),
+            const SizedBox(height: 16),
+            _buildSettingsCard(
+              context,
+              'Sync Demo',
+              'Manual sync and conflict resolution',
+              Icons.sync,
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SyncDemoScreen()),
               ),
             ),
           ],

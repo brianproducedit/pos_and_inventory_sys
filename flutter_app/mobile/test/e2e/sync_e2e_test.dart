@@ -169,8 +169,8 @@ void main() {
       final dbPath = p.join(tmpDir.path, 'e2e.sqlite');
       db = await AppDatabase.openWithPath(dbPath);
 
-      // Initialize shared preferences mock for the test
-      SharedPreferences.setMockInitialValues({});
+      // Initialize shared preferences mock for the test and set an active store
+      SharedPreferences.setMockInitialValues({'current_store_id': 1});
 
       // Create sync service pointed to our local server
       syncService =

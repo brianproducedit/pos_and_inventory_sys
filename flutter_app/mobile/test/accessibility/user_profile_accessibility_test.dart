@@ -41,7 +41,7 @@ class TestUserProfileProvider extends UserProfileProvider {
 
 void main() {
   testWidgets('User profile accessible and shows fields', (tester) async {
-    await initTestEnvironment();
+    initializeTestHelpersOnce();
     final prov = TestUserProfileProvider();
 
     await tester.pumpWidget(MultiProvider(

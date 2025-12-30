@@ -39,3 +39,27 @@ Postgres setup (optional - for production-like testing):
 - Consider using Docker secrets or a vault (e.g., AWS Secrets Manager) for production secrets, and avoid plaintext secrets in container definitions.
 - Alembic's `env.py` already supports reading `DATABASE_URL` from the environment.
 
+---
+
+## Flutter client environment & test notes 📱
+Add the following environment variables (or set them via build-time config) to configure network endpoints used by the mobile client:
+
+- `BASE_URL` — Base API URL for the server (e.g., `https://api.example.com` or `http://localhost:8000`).
+
+Testing & local runs:
+- For widget/unit tests that touch network code, always inject or override HTTP clients and providers instead of relying on real network calls. Examples:
+  - Override `postgresApiServiceProvider` in tests using `ProviderScope(overrides: [postgresApiServiceProvider.overrideWithValue(fakeService)])`.
+  - Use `SharedPreferences.setMockInitialValues({'access_token': 'tok'})` in tests that expect a stored token.
+- Use `sqflite_common_ffi` (in-memory DB) in tests to avoid platform sqlite issues: call `sqfliteFfiInit()` and set `databaseFactory = databaseFactoryFfi` before database use.
+- When testing UI interactions that schedule background tasks or DB reads, avoid `pumpAndSettle()` if background timers or unbounded futures are present; prefer explicit `tester.pump()` calls and polling the database or provider state with a bounded timeout instead.
+
+Seed / initial data instructions:
+- Manual (dev): In the app, open `Sync Demo` and press the **Seed DB (initial fetch)** button (requires a valid `access_token` stored in prefs). This calls the server endpoint to fetch initial snapshot and seeds the local DB.
+- Tests: Prefer calling `PostgresApiService.fetchInitialDataAndSeedDB` directly in a test with a fake API client to verify seeding behavior deterministically.
+
+CI notes:
+- Provide `BASE_URL` via CI secrets (e.g., `BASE_URL`) if running integration tests that need a backend. Prefer mock-based tests in CI to avoid flaky network.
+
+---
+
+If you want, I can add a short troubleshooting checklist to this file explaining common test failures (DB locks, off-screen button taps, missing token, HttpClient warnings).

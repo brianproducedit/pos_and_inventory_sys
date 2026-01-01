@@ -56,6 +56,75 @@ class ApiClient {
       : baseUrl = baseUrl ?? Env.baseUrl,
         _client = client ?? http.Client();
 
+  // ==================== SYNC ENDPOINTS ====================
+
+  /// Pull changes from server since last sync
+  Future<Map<String, dynamic>> pullChanges({
+    required String token,
+    DateTime? lastSyncTime,
+  }) async {
+    final timestamp = lastSyncTime?.toIso8601String() ?? '';
+    final url = Uri.parse('$baseUrl/api/sync/pull?since=$timestamp');
+    
+    final response = await _client.get(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to pull changes: ${response.statusCode} ${response.body}');
+    }
+  }
+
+  /// Push changes to server
+  Future<Map<String, dynamic>> pushChanges({
+    required String token,
+    required List<Map<String, dynamic>> changes,
+  }) async {
+    final url = Uri.parse('$baseUrl/api/sync/push');
+    
+    final response = await _client.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({'changes': changes}),
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to push changes: ${response.statusCode} ${response.body}');
+    }
+  }
+
+  /// Get sync status from server
+  Future<Map<String, dynamic>> getSyncStatus({required String token}) async {
+    final url = Uri.parse('$baseUrl/api/sync/status');
+    
+    final response = await _client.get(
+      url,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return json.decode(response.body) as Map<String, dynamic>;
+    } else {
+      throw Exception('Failed to get sync status: ${response.statusCode}');
+    }
+  }
+
+  // ==================== AUTH ENDPOINTS ====================
+
   /// Login with username and password
   Future<LoginResponse> login(String username, String password) async {
     final response = await _client.post(

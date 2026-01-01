@@ -55,9 +55,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await context
-          .read<InventoryProviderV2>()
-          .updateProduct(
+      await context.read<InventoryProviderV2>().updateProduct(
             widget.product['id'],
             name: _nameController.text.trim(),
             price: double.parse(_priceController.text),

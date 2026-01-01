@@ -19,8 +19,12 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy app
 COPY . /app
 
-# Entrypoint script handles migrations + seeding
-RUN chmod +x /app/entrypoint.sh
+# Fix line endings and make entrypoint executable
+RUN apt-get update && apt-get install -y dos2unix && \
+    dos2unix /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    apt-get remove -y dos2unix && \
+    rm -rf /var/lib/apt/lists/*
 
 # Best-effort: run as non-root
 RUN useradd -m appuser && chown -R appuser /app

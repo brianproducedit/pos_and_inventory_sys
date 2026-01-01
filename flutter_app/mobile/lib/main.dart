@@ -10,6 +10,7 @@ import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/services/database_service.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/pos_provider.dart';
 import 'package:mobile/providers/analytics_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
@@ -40,6 +41,13 @@ import 'data/local/database_helper.dart';
 import 'data/remote/postgres_api_service.dart';
 import 'data/repositories/product_repository.dart';
 import 'data/repositories/transaction_repository.dart';
+// V2 Offline-First Repositories
+import 'data/repositories/product_repository_v2.dart';
+import 'data/repositories/store_repository_v2.dart';
+import 'data/repositories/user_repository_v2.dart';
+import 'data/repositories/sale_repository_v2.dart';
+import 'data/repositories/inventory_repository_v2.dart';
+import 'data/repositories/settings_repository_v2.dart';
 import 'ui/sync_demo.dart';
 import 'ui/admin/sync_errors_screen.dart';
 import 'dart:async';
@@ -114,11 +122,25 @@ class MyApp extends StatelessWidget {
               create: (context) => TransactionRepositoryImpl(
                   db: context.read<DatabaseHelper>(),
                   api: context.read<PostgresApiService>())),
+          
+          // V2 Offline-First Repositories (use Drift database)
+          Provider<ProductRepository_v2>(
+              create: (context) => ProductRepository_v2(context.read<AppDatabase>())),
+          Provider<StoreRepository_v2>(
+              create: (context) => StoreRepository_v2(context.read<AppDatabase>())),
+          Provider<UserRepository_v2>(
+              create: (context) => UserRepository_v2(context.read<AppDatabase>())),
+          Provider<SaleRepository_v2>(
+              create: (context) => SaleRepository_v2(context.read<AppDatabase>())),
+          Provider<InventoryRepository_v2>(
+              create: (context) => InventoryRepository_v2(context.read<AppDatabase>())),
+          Provider<SettingsRepository_v2>(
+              create: (context) => SettingsRepository_v2(context.read<AppDatabase>())),
 
           // SyncProvider must be created before providers that depend on it
           ChangeNotifierProvider(create: (_) => SyncProvider()),
 
-          // UI-level providers that depend on repositories and SyncProvider
+          // V1 UI-level providers (legacy - being phased out)
           ChangeNotifierProxyProvider<SyncProvider, InventoryProvider>(
             create: (context) => InventoryProvider(
                 productRepository: context.read<ProductRepository>(),
@@ -130,6 +152,13 @@ class MyApp extends StatelessWidget {
                     productRepository: context.read<ProductRepository>(),
                     dbHelper: context.read<DatabaseHelper>(),
                     syncProvider: syncProvider),
+          ),
+          
+          // V2 UI-level providers (offline-first with Drift)
+          ChangeNotifierProvider<InventoryProviderV2>(
+            create: (context) => InventoryProviderV2(
+              context.read<ProductRepository_v2>(),
+            ),
           ),
           ChangeNotifierProxyProvider<SyncProvider, PosProvider>(
             create: (context) => PosProvider(

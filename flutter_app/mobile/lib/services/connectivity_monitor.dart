@@ -16,7 +16,7 @@ class ConnectivityMonitor {
       StreamController<bool>.broadcast();
 
   bool _hasConnection = false;
-  StreamSubscription<List<ConnectivityResult>>? _subscription;
+  StreamSubscription<ConnectivityResult>? _subscription;
 
   /// Stream that emits connectivity status changes.
   Stream<bool> get onConnectivityChanged => _connectionController.stream;
@@ -32,7 +32,7 @@ class ConnectivityMonitor {
     _connectionController.add(_hasConnection);
 
     // Listen for connectivity changes
-    _subscription = _connectivity.onConnectivityChanged.listen((results) async {
+    _subscription = _connectivity.onConnectivityChanged.listen((result) async {
       // ConnectivityResult can be misleading (shows WiFi but no internet)
       // Always verify with actual connectivity check
       final hasInternet = await checkActualConnectivity();

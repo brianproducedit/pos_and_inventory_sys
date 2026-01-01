@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../db/app_database.dart';
 import '../data/remote/api_client.dart';
 
@@ -7,12 +8,14 @@ import '../data/remote/api_client.dart';
 class SyncWorker {
   final AppDatabase db;
   final ApiClient apiClient;
+  final FlutterSecureStorage secureStorage;
   bool _isSyncing = false;
 
   SyncWorker({
     required this.db,
     required this.apiClient,
-  });
+    FlutterSecureStorage? storage,
+  }) : secureStorage = storage ?? const FlutterSecureStorage();
 
   /// Trigger a sync operation
   Future<void> triggerSync() async {
@@ -44,9 +47,7 @@ class SyncWorker {
     // Get pending items from sync queue
     final pendingItems = await (db.select(db.syncQueue)
           ..where((q) => q.status.equals('pending'))
-          ..orderBy([
-            (q) => OrderingTerm.asc(q.createdAt)
-          ])
+          ..orderBy([(q) => OrderingTerm.asc(q.createdAt)])
           ..limit(100))
         .get();
 
@@ -93,8 +94,7 @@ class SyncWorker {
         await _syncStore(item, payload);
         break;
       default:
-        throw UnsupportedError(
-            'Unknown resource type: ${item.resourceType}');
+        throw UnsupportedError('Unknown resource type: ${item.resourceType}');
     }
 
     // Mark as completed and remove from queue
@@ -104,35 +104,95 @@ class SyncWorker {
   /// Sync user changes
   Future<void> _syncUser(
       SyncQueueData item, Map<String, dynamic> payload) async {
-    // For now, just a placeholder - will implement when backend endpoints are ready
     print('SyncWorker: Syncing user: ${item.operation}');
 
-    // Simulate successful sync
+    // Get auth token
+    final token = await secureStorage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('No auth token available for sync');
+    }
+
     if (item.operation == 'create') {
-      // When user is created on server, we'd get back server_id
-      // Update local user record with server_id
+      // Create user on server
       if (item.clientTempId != null) {
         final localUser = await (db.select(db.users)
               ..where((u) => u.clientId.equals(item.clientTempId!)))
             .getSingleOrNull();
 
         if (localUser != null) {
-          // For now, simulate server ID assignment
-          final mockServerId = DateTime.now().millisecondsSinceEpoch % 100000;
+          try {
+            // Send user data to server
+            final serverUser = await apiClient.createUser(
+              token: token,
+              userData: payload,
+            );
 
-          await (db.update(db.users)..where((u) => u.id.equals(localUser.id)))
-              .write(UsersCompanion(
-            serverId: Value(mockServerId),
-            syncStatus: Value(SyncStatus.synced),
-            isLocalOnly: Value(false),
-          ));
+            // Update local user with server ID
+            await (db.update(db.users)..where((u) => u.id.equals(localUser.id)))
+                .write(UsersCompanion(
+              serverId: Value(serverUser['id'] as int),
+              syncStatus: Value(SyncStatus.synced),
+              isLocalOnly: Value(false),
+              lastUpdatedAt: Value(DateTime.now()),
+            ));
 
-          print('SyncWorker: User synced, assigned server_id: $mockServerId');
+            print('SyncWorker: User created on server, id: ${serverUser['id']}');
+          } catch (e) {
+            print('SyncWorker: Failed to create user on server: $e');
+            rethrow;
+          }
         }
       }
     } else if (item.operation == 'update') {
       // Update existing user on server
-      print('SyncWorker: User update synced');
+      final userId = payload['id'] as int?;
+      if (userId != null) {
+        try {
+          // Check if it's a password change
+          if (payload['action'] == 'change_password') {
+            // Handle password change - remove action field before sending
+            final updateData = Map<String, dynamic>.from(payload);
+            updateData.remove('action');
+            updateData.remove('id');
+            updateData.remove('client_id');
+
+            await apiClient.updateUser(
+              token: token,
+              userId: userId,
+              userData: updateData,
+            );
+          } else {
+            // Regular user update
+            final updateData = Map<String, dynamic>.from(payload);
+            updateData.remove('id');
+            updateData.remove('client_id');
+
+            await apiClient.updateUser(
+              token: token,
+              userId: userId,
+              userData: updateData,
+            );
+          }
+
+          // Update local sync status
+          final localUser = await (db.select(db.users)
+                ..where((u) => u.serverId.equals(userId)))
+              .getSingleOrNull();
+
+          if (localUser != null) {
+            await (db.update(db.users)..where((u) => u.id.equals(localUser.id)))
+                .write(UsersCompanion(
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(DateTime.now()),
+            ));
+          }
+
+          print('SyncWorker: User updated on server, id: $userId');
+        } catch (e) {
+          print('SyncWorker: Failed to update user on server: $e');
+          rethrow;
+        }
+      }
     }
   }
 
@@ -200,9 +260,7 @@ class SyncWorker {
   /// Get last sync timestamp
   Future<DateTime?> getLastSyncTime() async {
     final lastItem = await (db.select(db.syncQueue)
-          ..orderBy([
-            (q) => OrderingTerm.desc(q.lastAttemptAt)
-          ])
+          ..orderBy([(q) => OrderingTerm.desc(q.lastAttemptAt)])
           ..limit(1))
         .getSingleOrNull();
 

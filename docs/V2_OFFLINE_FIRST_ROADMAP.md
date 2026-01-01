@@ -170,7 +170,7 @@ This roadmap outlines the complete transformation to a true offline-first archit
 
 **Note:** Run `flutter pub run build_runner build --delete-conflicting-outputs` to generate Drift companion classes before proceeding to Phase 2.
 
-### Phase 2: Authentication (Week 2-3) 🚧 IN PROGRESS
+### Phase 2: Authentication (Week 2-3) ✅ COMPLETE
 **Goal:** Enable full offline authentication
 
 | Task | Priority | Status |
@@ -179,39 +179,62 @@ This roadmap outlines the complete transformation to a true offline-first archit
 | 2.2 Implement "First Contact" login flow | HIGH | ✅ |
 | 2.3 Implement offline authentication check | HIGH | ✅ |
 | 2.4 Implement "Ghost User" creation flow | HIGH | ✅ |
-| 2.5 Sync new users to backend when online | HIGH | 🚧 |
+| 2.5 Sync new users to backend when online | HIGH | ✅ |
 | 2.6 Handle password changes and sync | MEDIUM | ✅ |
 
 **Started:** January 1, 2026  
-**Services Complete:** January 1, 2026  
-**Commit:** 97b71a8 - feat(v2-phase2): implement offline-first authentication system
+**Completed:** January 1, 2026  
+**Commits:**
+- 97b71a8 - feat(v2-phase2): implement offline-first authentication system
+- d6217f0 - docs: update roadmap with Phase 2 completion status
 
-**Implementation Notes:**
+**Implementation Details:**
 - OfflineAuthService provides "Indestructible Identity" pattern
 - Password hashing uses SHA-256 with username as salt
 - Online login caches credentials in Drift database with flutter_secure_storage for tokens
 - Offline login validates against local password hash
 - Ghost users created offline automatically sync when connection restored
 - Password changes enqueued for background sync
-- SyncWorker skeleton includes user sync operations (full backend integration pending Phase 5)
+- SyncWorker includes full user sync with backend API integration
+- ApiClient provides createUser() and updateUser() endpoints
 
-**Next Steps:**
-- Wire authentication to login screen UI
-- Update user management screens to use AuthProvider
-- Test offline authentication scenarios
-- Proceed to Phase 3 (CRUD Operations)
-
-### Phase 3: CRUD Operations (Week 3-4)
+### Phase 3: CRUD Operations (Week 3-4) 🚧 IN PROGRESS
 **Goal:** All management screens work offline
 
 | Task | Priority | Status |
 |------|----------|--------|
-| 3.1 ProductRepository with local-first writes | HIGH | ⬜ |
-| 3.2 StoreRepository with local-first writes | HIGH | ⬜ |
-| 3.3 UserRepository (admin/cashier management) | HIGH | ⬜ |
-| 3.4 InventoryRepository for stock updates | HIGH | ⬜ |
+| 3.1 ProductRepository with local-first writes | HIGH | ✅ |
+| 3.2 StoreRepository with local-first writes | HIGH | ✅ |
+| 3.3 UserRepository (admin/cashier management) | HIGH | ✅ |
+| 3.4 InventoryRepository for stock updates | HIGH | ✅ |
 | 3.5 SettingsRepository (store/user/system) | MEDIUM | ⬜ |
 | 3.6 Update all screens to use repositories | HIGH | ⬜ |
+
+**Started:** January 1, 2026
+
+**Implementation Notes:**
+- ProductRepository_v2 created in Phase 1 with full CRUD operations
+- StoreRepository_v2 created in Phase 1 with full CRUD operations
+- SaleRepository_v2 created in Phase 1 with atomic transaction support
+- UserRepository_v2 provides admin/cashier management with role-based operations
+- InventoryRepository_v2 provides stock tracking with audit trail via InventoryLogs
+- All repositories follow local-first pattern: write to Drift immediately, enqueue for sync
+
+**Completed Components:**
+- ✅ UserRepository: Create, update, delete users with role management
+- ✅ UserRepository: Store assignment, password change enforcement
+- ✅ UserRepository: Username uniqueness checks, sync status tracking
+- ✅ InventoryRepository: Stock adjustments with reason logging
+- ✅ InventoryRepository: Restock, damaged goods, returns processing
+- ✅ InventoryRepository: Low stock alerts, out-of-stock tracking
+- ✅ InventoryRepository: Inventory summary statistics
+- ✅ InventoryRepository: Bulk stock adjustments for efficiency
+
+**Next Steps:**
+- Create SettingsRepository for app/store/user settings
+- Wire repositories to existing management screens
+- Update UI to use repository methods instead of direct API calls
+- Test offline CRUD scenarios
 
 ### Phase 4: Sales & Checkout (Week 4-5)
 **Goal:** Complete offline sales workflow

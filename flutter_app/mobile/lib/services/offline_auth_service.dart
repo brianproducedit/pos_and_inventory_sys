@@ -53,7 +53,8 @@ class OfflineAuthService {
 
   /// Main login entry point - decides online vs offline
   Future<AuthResult> login(String username, String password) async {
-    final hasConnectivity = await ConnectivityMonitor().checkActualConnectivity();
+    final hasConnectivity =
+        await ConnectivityMonitor().checkActualConnectivity();
 
     if (hasConnectivity) {
       try {
@@ -133,8 +134,7 @@ class OfflineAuthService {
         .getSingleOrNull();
 
     if (user == null) {
-      return AuthResult.failure(
-          'User not found. Please login online first.');
+      return AuthResult.failure('User not found. Please login online first.');
     }
 
     // 2. Verify password hash
@@ -191,7 +191,8 @@ class OfflineAuthService {
           entityId: Value(id.toString()),
           payloadJson: jsonEncode({
             'username': username,
-            'password': password, // Send plain text to server for proper hashing
+            'password':
+                password, // Send plain text to server for proper hashing
             'full_name': fullName,
             'role': role.name,
             'store_id': storeId,
@@ -210,9 +211,8 @@ class OfflineAuthService {
     required String oldPassword,
     required String newPassword,
   }) async {
-    final user =
-        await (db.select(db.users)..where((u) => u.id.equals(userId)))
-            .getSingleOrNull();
+    final user = await (db.select(db.users)..where((u) => u.id.equals(userId)))
+        .getSingleOrNull();
 
     if (user == null) {
       return AuthResult.failure('User not found');
@@ -249,9 +249,9 @@ class OfflineAuthService {
           }),
         ));
 
-    final updatedUser =
-        await (db.select(db.users)..where((u) => u.id.equals(userId)))
-            .getSingle();
+    final updatedUser = await (db.select(db.users)
+          ..where((u) => u.id.equals(userId)))
+        .getSingle();
 
     return AuthResult.success(updatedUser);
   }

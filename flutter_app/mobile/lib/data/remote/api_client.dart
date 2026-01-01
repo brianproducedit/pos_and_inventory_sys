@@ -100,15 +100,66 @@ class ApiClient {
     }
   }
 
+  /// Create user on server
+  Future<Map<String, dynamic>> createUser({
+    required String token,
+    required Map<String, dynamic> userData,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/users'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(userData),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to create user',
+      );
+    }
+  }
+
+  /// Update user on server
+  Future<Map<String, dynamic>> updateUser({
+    required String token,
+    required int userId,
+    required Map<String, dynamic> userData,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/users/$userId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(userData),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to update user',
+      );
+    }
+  }
+
   /// Push sync changes to server
   Future<SyncPushResponse> pushSync(List<Map<String, dynamic>> changes) async {
-    // TODO: Implement after sync engine is ready
+    // TODO: Implement batch sync endpoint when available
     throw UnimplementedError('pushSync not yet implemented');
   }
 
   /// Pull changes from server
   Future<SyncPullResponse> pullSync({required int sinceSeq}) async {
-    // TODO: Implement after sync engine is ready
+    // TODO: Implement delta sync endpoint when available
     throw UnimplementedError('pullSync not yet implemented');
   }
 }

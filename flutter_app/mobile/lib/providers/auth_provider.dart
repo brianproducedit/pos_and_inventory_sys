@@ -37,7 +37,8 @@ class AuthProvider with ChangeNotifier {
         _user = result.user;
         _isAuthenticated = true;
         notifyListeners();
-        debugPrint('Login successful for user: $username (${result.user!.role.name})');
+        debugPrint(
+            'Login successful for user: $username (${result.user!.role.name})');
       } else {
         throw AuthException(
           'login_failed',

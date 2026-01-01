@@ -397,27 +397,6 @@ Printer Settings UI (342 lines):
 
 **Note:** Service uses mock implementations for development. Production deployment requires integration with actual Bluetooth printer packages (blue_thermal_printer, bluetooth_print, or esc_pos_bluetooth).
 
-| Task | Priority | Status |
-|------|----------|--------|
-| 5.1 Implement background sync worker | HIGH | ⬜ |
-| 5.2 Push pending changes (create/update/delete) | HIGH | ⬜ |
-| 5.3 Pull server changes (delta sync) | HIGH | ⬜ |
-| 5.4 Conflict detection and resolution UI | MEDIUM | ⬜ |
-| 5.5 ID mapping (client temp_id → server_id) | HIGH | ⬜ |
-| 5.6 Retry logic with exponential backoff | MEDIUM | ⬜ |
-
-### Phase 6: Bluetooth Printing (Week 6-7)
-**Goal:** Flexible thermal printer support
-
-| Task | Priority | Status |
-|------|----------|--------|
-| 6.1 Design ReceiptModel abstraction | HIGH | ⬜ |
-| 6.2 Implement BluetoothPrinterService | HIGH | ⬜ |
-| 6.3 ESC/POS command builder | HIGH | ⬜ |
-| 6.4 Printer discovery and pairing UI | MEDIUM | ⬜ |
-| 6.5 Print queue for offline receipts | MEDIUM | ⬜ |
-| 6.6 Support multiple printer types | MEDIUM | ⬜ |
-
 ### Phase 7: Testing & Polish (Week 7-8)
 **Goal:** Production-ready offline-first app
 
@@ -428,7 +407,7 @@ Printer Settings UI (342 lines):
 | 7.3 Offline scenario testing | HIGH | ✅ |
 | 7.4 Performance optimization | MEDIUM | ✅ |
 | 7.5 Error handling and user feedback | HIGH | ✅ |
-| 7.6 Documentation update | MEDIUM | 🚧 |
+| 7.6 Documentation update | MEDIUM | ✅ |
 
 ---
 

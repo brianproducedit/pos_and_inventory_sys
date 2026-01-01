@@ -24,7 +24,7 @@ void main() {
     mockApiClient = MockApiClient();
     mockStorage = MockFlutterSecureStorage();
     conflictManager = models.ConflictManager();
-    
+
     syncWorker = SyncWorker(
       db: database,
       apiClient: mockApiClient,
@@ -45,25 +45,25 @@ void main() {
     test('should push pending user create to server', () async {
       // Create a local user
       final userId = await database.into(database.users).insert(
-        UsersCompanion.insert(
-          clientId: Value('client-123'),
-          username: 'testuser',
-          passwordHash: 'hash123',
-          fullName: Value('Test User'),
-          role: UserRole.cashier,
-          syncStatus: Value(SyncStatus.pending),
-        ),
-      );
+            UsersCompanion.insert(
+              clientId: Value('client-123'),
+              username: 'testuser',
+              passwordHash: 'hash123',
+              fullName: Value('Test User'),
+              role: UserRole.cashier,
+              syncStatus: Value(SyncStatus.pending),
+            ),
+          );
 
       // Add to sync queue
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'user',
-          resourceId: userId,
-          operation: 'create',
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'user',
+              resourceId: userId,
+              operation: 'create',
+              payload: Value('{}'),
+            ),
+          );
 
       // Mock successful API response
       when(mockApiClient.createUser(any))
@@ -94,33 +94,33 @@ void main() {
     test('should push pending product create to server', () async {
       // Create test store
       final storeId = await database.into(database.stores).insert(
-        StoresCompanion.insert(
-          clientId: Value('store-1'),
-          name: 'Test Store',
-        ),
-      );
+            StoresCompanion.insert(
+              clientId: Value('store-1'),
+              name: 'Test Store',
+            ),
+          );
 
       // Create a local product
       final productId = await database.into(database.products).insert(
-        ProductsCompanion.insert(
-          clientId: Value('product-123'),
-          name: 'Test Product',
-          price: Value(19.99),
-          stockQuantity: Value(50),
-          storeId: storeId,
-          syncStatus: Value(SyncStatus.pending),
-        ),
-      );
+            ProductsCompanion.insert(
+              clientId: Value('product-123'),
+              name: 'Test Product',
+              price: Value(19.99),
+              stockQuantity: Value(50),
+              storeId: storeId,
+              syncStatus: Value(SyncStatus.pending),
+            ),
+          );
 
       // Add to sync queue
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'product',
-          resourceId: productId,
-          operation: 'create',
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'product',
+              resourceId: productId,
+              operation: 'create',
+              payload: Value('{}'),
+            ),
+          );
 
       // Mock successful API response
       when(mockApiClient.createProduct(any))
@@ -140,30 +140,30 @@ void main() {
       expect(product.serverId, 200);
     });
 
-    test('should handle sync failures and retry with exponential backoff', () async {
+    test('should handle sync failures and retry with exponential backoff',
+        () async {
       // Create a user to sync
       final userId = await database.into(database.users).insert(
-        UsersCompanion.insert(
-          clientId: Value('client-fail'),
-          username: 'failuser',
-          passwordHash: 'hash123',
-          role: UserRole.cashier,
-          syncStatus: Value(SyncStatus.pending),
-        ),
-      );
+            UsersCompanion.insert(
+              clientId: Value('client-fail'),
+              username: 'failuser',
+              passwordHash: 'hash123',
+              role: UserRole.cashier,
+              syncStatus: Value(SyncStatus.pending),
+            ),
+          );
 
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'user',
-          resourceId: userId,
-          operation: 'create',
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'user',
+              resourceId: userId,
+              operation: 'create',
+              payload: Value('{}'),
+            ),
+          );
 
       // Mock API failure
-      when(mockApiClient.createUser(any))
-          .thenThrow(Exception('Network error'));
+      when(mockApiClient.createUser(any)).thenThrow(Exception('Network error'));
 
       // Trigger sync
       await syncWorker.triggerSync();
@@ -173,7 +173,7 @@ void main() {
             ..where((q) => q.resourceType.equals('user'))
             ..where((q) => q.resourceId.equals(userId)))
           .getSingle();
-      
+
       expect(queueItem.retryCount, greaterThan(0));
       expect(queueItem.status, 'pending');
       expect(queueItem.errorMessage, isNotNull);
@@ -183,24 +183,23 @@ void main() {
   group('SyncWorker - Pull Changes', () {
     test('should pull and apply server changes', () async {
       // Mock server changes response
-      when(mockApiClient.pullChanges(any))
-          .thenAnswer((_) async => {
-                'changes': [
-                  {
-                    'resource_type': 'user',
-                    'operation': 'create',
-                    'data': {
-                      'id': 500,
-                      'client_id': 'server-user-1',
-                      'username': 'serveruser',
-                      'full_name': 'Server User',
-                      'role': 'cashier',
-                      'is_active': true,
-                      'updated_at': DateTime.now().toIso8601String(),
-                    },
-                  },
-                ],
-              });
+      when(mockApiClient.pullChanges(any)).thenAnswer((_) async => {
+            'changes': [
+              {
+                'resource_type': 'user',
+                'operation': 'create',
+                'data': {
+                  'id': 500,
+                  'client_id': 'server-user-1',
+                  'username': 'serveruser',
+                  'full_name': 'Server User',
+                  'role': 'cashier',
+                  'is_active': true,
+                  'updated_at': DateTime.now().toIso8601String(),
+                },
+              },
+            ],
+          });
 
       // Trigger sync
       await syncWorker.triggerSync();
@@ -209,7 +208,7 @@ void main() {
       final users = await (database.select(database.users)
             ..where((u) => u.username.equals('serveruser')))
           .get();
-      
+
       expect(users.length, 1);
       expect(users.first.serverId, 500);
       expect(users.first.syncStatus, SyncStatus.synced);
@@ -219,36 +218,37 @@ void main() {
     test('should detect and handle conflicts', () async {
       // Create local user with pending changes
       final userId = await database.into(database.users).insert(
-        UsersCompanion.insert(
-          clientId: Value('conflict-user'),
-          serverId: Value(600),
-          username: 'conflictuser',
-          passwordHash: 'localhash',
-          fullName: Value('Local Name'),
-          role: UserRole.cashier,
-          syncStatus: Value(SyncStatus.pending),
-        ),
-      );
+            UsersCompanion.insert(
+              clientId: Value('conflict-user'),
+              serverId: Value(600),
+              username: 'conflictuser',
+              passwordHash: 'localhash',
+              fullName: Value('Local Name'),
+              role: UserRole.cashier,
+              syncStatus: Value(SyncStatus.pending),
+            ),
+          );
 
       // Mock server changes with same user
-      when(mockApiClient.pullChanges(any))
-          .thenAnswer((_) async => {
-                'changes': [
-                  {
-                    'resource_type': 'user',
-                    'operation': 'update',
-                    'data': {
-                      'id': 600,
-                      'client_id': 'conflict-user',
-                      'username': 'conflictuser',
-                      'full_name': 'Server Name',
-                      'role': 'admin',
-                      'is_active': true,
-                      'updated_at': DateTime.now().add(Duration(minutes: 5)).toIso8601String(),
-                    },
-                  },
-                ],
-              });
+      when(mockApiClient.pullChanges(any)).thenAnswer((_) async => {
+            'changes': [
+              {
+                'resource_type': 'user',
+                'operation': 'update',
+                'data': {
+                  'id': 600,
+                  'client_id': 'conflict-user',
+                  'username': 'conflictuser',
+                  'full_name': 'Server Name',
+                  'role': 'admin',
+                  'is_active': true,
+                  'updated_at': DateTime.now()
+                      .add(Duration(minutes: 5))
+                      .toIso8601String(),
+                },
+              },
+            ],
+          });
 
       // Trigger sync
       await syncWorker.triggerSync();
@@ -270,37 +270,37 @@ void main() {
     test('should return queue status', () async {
       // Add some queue items
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'product',
-          resourceId: 1,
-          operation: 'create',
-          status: Value('pending'),
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'product',
+              resourceId: 1,
+              operation: 'create',
+              status: Value('pending'),
+              payload: Value('{}'),
+            ),
+          );
 
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'user',
-          resourceId: 2,
-          operation: 'update',
-          status: Value('processing'),
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'user',
+              resourceId: 2,
+              operation: 'update',
+              status: Value('processing'),
+              payload: Value('{}'),
+            ),
+          );
 
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'sale',
-          resourceId: 3,
-          operation: 'create',
-          status: Value('failed'),
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'sale',
+              resourceId: 3,
+              operation: 'create',
+              status: Value('failed'),
+              payload: Value('{}'),
+            ),
+          );
 
       final status = await syncWorker.getQueueStatus();
-      
+
       expect(status.pendingCount, greaterThanOrEqualTo(1));
       expect(status.processingCount, greaterThanOrEqualTo(1));
       expect(status.failedCount, greaterThanOrEqualTo(1));
@@ -311,15 +311,15 @@ void main() {
     test('should retry failed items', () async {
       // Create a failed queue item
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'product',
-          resourceId: 1,
-          operation: 'create',
-          status: Value('failed'),
-          retryCount: Value(2),
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'product',
+              resourceId: 1,
+              operation: 'create',
+              status: Value('failed'),
+              retryCount: Value(2),
+              payload: Value('{}'),
+            ),
+          );
 
       // Mock successful retry
       when(mockApiClient.createProduct(any))
@@ -336,26 +336,26 @@ void main() {
   group('SyncWorker - ID Mapping', () {
     test('should map client IDs to server IDs after sync', () async {
       final clientId = 'client-product-123';
-      
+
       // Create product with client ID
       final productId = await database.into(database.products).insert(
-        ProductsCompanion.insert(
-          clientId: Value(clientId),
-          name: 'Mapping Test',
-          price: Value(10.00),
-          storeId: 1,
-          syncStatus: Value(SyncStatus.pending),
-        ),
-      );
+            ProductsCompanion.insert(
+              clientId: Value(clientId),
+              name: 'Mapping Test',
+              price: Value(10.00),
+              storeId: 1,
+              syncStatus: Value(SyncStatus.pending),
+            ),
+          );
 
       await database.into(database.syncQueue).insert(
-        SyncQueueCompanion.insert(
-          resourceType: 'product',
-          resourceId: productId,
-          operation: 'create',
-          payload: Value('{}'),
-        ),
-      );
+            SyncQueueCompanion.insert(
+              resourceType: 'product',
+              resourceId: productId,
+              operation: 'create',
+              payload: Value('{}'),
+            ),
+          );
 
       // Mock API response with server ID
       when(mockApiClient.createProduct(any))
@@ -367,7 +367,7 @@ void main() {
       final product = await (database.select(database.products)
             ..where((p) => p.clientId.equals(clientId)))
           .getSingle();
-      
+
       expect(product.serverId, 999);
       expect(product.clientId, clientId); // Client ID preserved
     });
@@ -377,7 +377,7 @@ void main() {
     test('should not sync while already syncing', () async {
       // Start first sync
       final sync1 = syncWorker.triggerSync();
-      
+
       // Try to start second sync immediately
       final sync2 = syncWorker.triggerSync();
 
@@ -394,13 +394,13 @@ void main() {
       // Create multiple pending items
       for (int i = 0; i < 150; i++) {
         await database.into(database.syncQueue).insert(
-          SyncQueueCompanion.insert(
-            resourceType: 'product',
-            resourceId: i,
-            operation: 'create',
-            payload: Value('{}'),
-          ),
-        );
+              SyncQueueCompanion.insert(
+                resourceType: 'product',
+                resourceId: i,
+                operation: 'create',
+                payload: Value('{}'),
+              ),
+            );
       }
 
       // Mock API to track calls
@@ -414,7 +414,7 @@ void main() {
       final remaining = await (database.select(database.syncQueue)
             ..where((q) => q.status.equals('pending')))
           .get();
-      
+
       // Some items should remain for next sync cycle
       expect(remaining.length, lessThanOrEqualTo(150));
     });

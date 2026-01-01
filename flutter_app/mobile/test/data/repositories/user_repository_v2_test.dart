@@ -93,7 +93,8 @@ void main() {
       expect(user.fullName, 'Find Me');
     });
 
-    test('getByUsername should return null for non-existent username', () async {
+    test('getByUsername should return null for non-existent username',
+        () async {
       final user = await userRepository.getByUsername('nonexistent');
       expect(user, isNull);
     });
@@ -106,7 +107,7 @@ void main() {
         role: UserRole.cashier,
         storeId: null,
       );
-      
+
       await userRepository.create(
         username: 'user2',
         password: 'Pass123!',
@@ -150,7 +151,8 @@ void main() {
       expect(syncItems.length, greaterThanOrEqualTo(1));
     });
 
-    test('changePassword should update password hash and enqueue sync', () async {
+    test('changePassword should update password hash and enqueue sync',
+        () async {
       final userId = await userRepository.create(
         username: 'passchange',
         password: 'OldPass123!',
@@ -233,9 +235,9 @@ void main() {
     test('getByStore should return only users for specified store', () async {
       // Create store
       await database.into(database.stores).insert(StoresCompanion.insert(
-        clientId: Value('store1'),
-        name: 'Test Store 1',
-      ));
+            clientId: Value('store1'),
+            name: 'Test Store 1',
+          ));
       final storeId = (await database.select(database.stores).getSingle()).id;
 
       // Create users for store
@@ -306,7 +308,8 @@ void main() {
 
       final pendingUsers = await userRepository.getPendingSyncUsers();
       expect(pendingUsers.length, greaterThanOrEqualTo(1));
-      expect(pendingUsers.every((u) => u.syncStatus == SyncStatus.pending), true);
+      expect(
+          pendingUsers.every((u) => u.syncStatus == SyncStatus.pending), true);
     });
 
     test('markAsSynced should update sync status', () async {
@@ -336,11 +339,13 @@ void main() {
         storeId: null,
       );
 
-      final isValid = await userRepository.validatePassword(userId, 'Correct123!');
+      final isValid =
+          await userRepository.validatePassword(userId, 'Correct123!');
       expect(isValid, true);
     });
 
-    test('validatePassword should return false for incorrect password', () async {
+    test('validatePassword should return false for incorrect password',
+        () async {
       final userId = await userRepository.create(
         username: 'invalidpass',
         password: 'Correct123!',
@@ -349,7 +354,8 @@ void main() {
         storeId: null,
       );
 
-      final isValid = await userRepository.validatePassword(userId, 'Wrong123!');
+      final isValid =
+          await userRepository.validatePassword(userId, 'Wrong123!');
       expect(isValid, false);
     });
   });

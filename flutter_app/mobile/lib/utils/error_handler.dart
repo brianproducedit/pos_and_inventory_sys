@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 /// Centralized error handling and user feedback system
 class ErrorHandler {
   /// Show a user-friendly error message
-  static void showError(BuildContext context, String message, {
+  static void showError(
+    BuildContext context,
+    String message, {
     String? title,
     Duration duration = const Duration(seconds: 4),
   }) {
@@ -47,7 +49,9 @@ class ErrorHandler {
   }
 
   /// Show a success message
-  static void showSuccess(BuildContext context, String message, {
+  static void showSuccess(
+    BuildContext context,
+    String message, {
     Duration duration = const Duration(seconds: 3),
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -67,7 +71,9 @@ class ErrorHandler {
   }
 
   /// Show a warning message
-  static void showWarning(BuildContext context, String message, {
+  static void showWarning(
+    BuildContext context,
+    String message, {
     String? title,
     Duration duration = const Duration(seconds: 4),
   }) {
@@ -104,7 +110,9 @@ class ErrorHandler {
   }
 
   /// Show info message
-  static void showInfo(BuildContext context, String message, {
+  static void showInfo(
+    BuildContext context,
+    String message, {
     Duration duration = const Duration(seconds: 3),
   }) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -144,7 +152,8 @@ class ErrorHandler {
   }
 
   /// Show sync progress indicator
-  static void showSyncProgress(BuildContext context, {
+  static void showSyncProgress(
+    BuildContext context, {
     required int synced,
     required int total,
   }) {
@@ -237,8 +246,7 @@ class ErrorHandler {
     }
 
     // Validation errors
-    if (errorString.contains('validation') ||
-        errorString.contains('invalid')) {
+    if (errorString.contains('validation') || errorString.contains('invalid')) {
       return 'Invalid input. Please check your data and try again.';
     }
 
@@ -255,8 +263,7 @@ class ErrorHandler {
     }
 
     // Server errors
-    if (errorString.contains('500') ||
-        errorString.contains('server error')) {
+    if (errorString.contains('500') || errorString.contains('server error')) {
       return 'Server error occurred. Please try again later.';
     }
 
@@ -332,7 +339,8 @@ class ErrorHandler {
   }
 
   /// Show loading overlay
-  static void showLoadingOverlay(BuildContext context, {
+  static void showLoadingOverlay(
+    BuildContext context, {
     String message = 'Loading...',
   }) {
     showDialog(

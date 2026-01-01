@@ -24,11 +24,11 @@ void main() {
 
     // Create test store
     testStoreId = await database.into(database.stores).insert(
-      StoresCompanion.insert(
-        clientId: Value('test-store'),
-        name: 'Test Store',
-      ),
-    );
+          StoresCompanion.insert(
+            clientId: Value('test-store'),
+            name: 'Test Store',
+          ),
+        );
 
     // Create test user
     testUserId = await userRepository.create(
@@ -276,11 +276,11 @@ void main() {
     test('getByStore should return only sales for specified store', () async {
       // Create second store
       final store2Id = await database.into(database.stores).insert(
-        StoresCompanion.insert(
-          clientId: Value('store2'),
-          name: 'Store 2',
-        ),
-      );
+            StoresCompanion.insert(
+              clientId: Value('store2'),
+              name: 'Store 2',
+            ),
+          );
 
       final saleItems = [
         SaleItemData(
@@ -402,7 +402,8 @@ void main() {
 
       final pendingSales = await saleRepository.getPendingSyncSales();
       expect(pendingSales.length, greaterThanOrEqualTo(1));
-      expect(pendingSales.every((s) => s.syncStatus == SyncStatus.pending), true);
+      expect(
+          pendingSales.every((s) => s.syncStatus == SyncStatus.pending), true);
     });
 
     test('markAsSynced should update sync status', () async {
@@ -492,7 +493,8 @@ void main() {
 
   group('SaleRepository V2 - Transaction Integrity', () {
     test('failed sale creation should rollback stock deductions', () async {
-      final initialStock = (await productRepository.getById(testProductId))!.stockQuantity;
+      final initialStock =
+          (await productRepository.getById(testProductId))!.stockQuantity;
 
       // Try to create sale with invalid data that will fail
       try {
@@ -516,7 +518,8 @@ void main() {
       }
 
       // Stock should remain unchanged
-      final finalStock = (await productRepository.getById(testProductId))!.stockQuantity;
+      final finalStock =
+          (await productRepository.getById(testProductId))!.stockQuantity;
       expect(finalStock, initialStock);
     });
   });

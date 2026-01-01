@@ -30,24 +30,24 @@ void main() {
     database = AppDatabase(NativeDatabase.memory());
     mockApiClient = MockApiClient();
     mockStorage = MockFlutterSecureStorage();
-    
+
     authService = OfflineAuthService(
       apiClient: mockApiClient,
       db: database,
       secureStorage: mockStorage,
     );
-    
+
     userRepository = UserRepository(database);
     productRepository = ProductRepository(database);
     saleRepository = SaleRepository(database);
 
     // Create test store
     testStoreId = await database.into(database.stores).insert(
-      StoresCompanion.insert(
-        clientId: Value('test-store'),
-        name: 'Test Store',
-      ),
-    );
+          StoresCompanion.insert(
+            clientId: Value('test-store'),
+            name: 'Test Store',
+          ),
+        );
   });
 
   tearDown(() async {
@@ -480,8 +480,10 @@ void main() {
       await userRepository.changePassword(userId, 'New456!');
 
       // Verify password changed
-      final isValidOld = await userRepository.validatePassword(userId, 'Old123!');
-      final isValidNew = await userRepository.validatePassword(userId, 'New456!');
+      final isValidOld =
+          await userRepository.validatePassword(userId, 'Old123!');
+      final isValidNew =
+          await userRepository.validatePassword(userId, 'New456!');
 
       expect(isValidOld, false);
       expect(isValidNew, true);

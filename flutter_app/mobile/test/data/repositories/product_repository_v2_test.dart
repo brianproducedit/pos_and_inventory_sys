@@ -16,11 +16,11 @@ void main() {
 
     // Create a test store
     testStoreId = await database.into(database.stores).insert(
-      StoresCompanion.insert(
-        clientId: Value('test-store'),
-        name: 'Test Store',
-      ),
-    );
+          StoresCompanion.insert(
+            clientId: Value('test-store'),
+            name: 'Test Store',
+          ),
+        );
   });
 
   tearDown(() async {
@@ -251,21 +251,23 @@ void main() {
         storeId: testStoreId,
       );
 
-      final lowStockProducts = await productRepository.getLowStock(threshold: 10);
+      final lowStockProducts =
+          await productRepository.getLowStock(threshold: 10);
       expect(lowStockProducts.length, greaterThanOrEqualTo(2));
       expect(lowStockProducts.every((p) => p.stockQuantity <= 10), true);
     });
   });
 
   group('ProductRepository V2 - Store Filtering', () {
-    test('getByStore should return only products for specified store', () async {
+    test('getByStore should return only products for specified store',
+        () async {
       // Create second store
       final store2Id = await database.into(database.stores).insert(
-        StoresCompanion.insert(
-          clientId: Value('store2'),
-          name: 'Store 2',
-        ),
-      );
+            StoresCompanion.insert(
+              clientId: Value('store2'),
+              name: 'Store 2',
+            ),
+          );
 
       await productRepository.create(
         name: 'Store 1 Product',
@@ -331,7 +333,8 @@ void main() {
   });
 
   group('ProductRepository V2 - Sync Status', () {
-    test('getPendingSyncProducts should return products with pending sync', () async {
+    test('getPendingSyncProducts should return products with pending sync',
+        () async {
       await productRepository.create(
         name: 'Pending Product',
         price: 10.00,
@@ -340,7 +343,8 @@ void main() {
 
       final pendingProducts = await productRepository.getPendingSyncProducts();
       expect(pendingProducts.length, greaterThanOrEqualTo(1));
-      expect(pendingProducts.every((p) => p.syncStatus == SyncStatus.pending), true);
+      expect(pendingProducts.every((p) => p.syncStatus == SyncStatus.pending),
+          true);
     });
 
     test('markAsSynced should update sync status', () async {

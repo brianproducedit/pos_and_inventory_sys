@@ -50,6 +50,18 @@ def upgrade() -> None:
     
     # Add FK constraint to users.store_id after stores table exists
     op.create_foreign_key('fk_users_store_id', 'users', 'stores', ['store_id'], ['id'])
+    
+    # Create user_stores mapping table (for multi-store admin assignments)
+    op.create_table('user_stores',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('user_id', sa.Integer(), nullable=False),
+    sa.Column('store_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['store_id'], ['stores.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_user_stores_id'), 'user_stores', ['id'], unique=False)
+    
     op.create_table('products',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
@@ -115,8 +127,11 @@ def downgrade() -> None:
     op.drop_table('sales')
     op.drop_index(op.f('ix_products_id'), table_name='products')
     op.drop_table('products')
-    op.drop_index(op.f('ix_users_id'), table_name='users')
-    op.drop_table('users')
+    op.drop_index(op.f('ix_user_stores_id'), table_name='user_stores')
+    op.drop_table('user_stores')
+    op.drop_foreign_key('fk_users_store_id', 'users', type_='foreignkey')
     op.drop_index(op.f('ix_stores_id'), table_name='stores')
     op.drop_table('stores')
+    op.drop_index(op.f('ix_users_id'), table_name='users')
+    op.drop_table('users')
     # ### end Alembic commands ###

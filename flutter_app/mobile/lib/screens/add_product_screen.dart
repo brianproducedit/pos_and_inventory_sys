@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
-import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
@@ -38,9 +38,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   void initState() {
     super.initState();
+    // V2: Setup providers for context
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final storeProvider = context.read<StoreProvider>();
-      final inventoryProvider = context.read<InventoryProvider>();
+      final inventoryProvider = context.read<InventoryProviderV2>();
 
       try {
         if (!storeProvider.isInitialized) await storeProvider.initialize();
@@ -64,17 +65,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
       return;
     }
 
+    // V2: No loading state needed, instant local write
     setState(() => _isLoading = true);
 
-    final productData = {
-      'name': _nameController.text.trim(),
-      'price': double.parse(_priceController.text),
-      'stock_quantity': int.parse(_stockController.text),
-      'description': _descriptionController.text.trim(),
-    };
-
     try {
-      await context.read<InventoryProvider>().addProduct(productData);
+      await context.read<InventoryProviderV2>().addProduct(
+        name: _nameController.text.trim(),
+        price: double.parse(_priceController.text),
+        stockQuantity: int.parse(_stockController.text),
+        description: _descriptionController.text.trim(),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product added successfully!')),

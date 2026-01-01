@@ -215,6 +215,7 @@ This roadmap outlines the complete transformation to a true offline-first archit
 
 **Commits:**
 - 48db258 - feat(v2-phase3): implement comprehensive CRUD repositories
+- a60ff33 - feat(v2): complete Phase 3 and implement Phase 4 sales workflow
 
 **Implementation Notes:**
 - ProductRepository_v2 created in Phase 1 with full CRUD operations
@@ -235,7 +236,7 @@ This roadmap outlines the complete transformation to a true offline-first archit
 - Wire repositories to existing management screens
 - Update UI to use repository methods instead of direct API calls
 
-### Phase 4: Sales & Checkout (Week 4-5) 🚧 IN PROGRESS
+### Phase 4: Sales & Checkout (Week 4-5) ✅ COMPLETE
 **Goal:** Complete offline sales workflow
 
 | Task | Priority | Status |
@@ -246,7 +247,11 @@ This roadmap outlines the complete transformation to a true offline-first archit
 | 4.4 Stock deduction (local) on sale | HIGH | ✅ |
 | 4.5 Sale sync to backend | HIGH | ✅ |
 
-**Started:** January 1, 2026
+**Started:** January 1, 2026  
+**Completed:** January 1, 2026
+
+**Commits:**
+- a60ff33 - feat(v2): complete Phase 3 and implement Phase 4 sales workflow
 
 **Completed Components:**
 - ✅ SaleRepository: completeSale() with atomic transaction (from Phase 1), enhanced with generateReceipt()
@@ -256,8 +261,18 @@ This roadmap outlines the complete transformation to a true offline-first archit
 - ✅ SyncWorker: Product and sale sync with real API calls, ID mapping, error handling
 - ✅ Stock deduction: Implemented in completeSale() atomic transaction (Products table update + sync enqueue)
 
+**Implementation Details:**
+- CartProvider manages offline shopping cart with ChangeNotifier pattern
+- Stock validation prevents overselling (checks current quantity before adding items)
+- Cart persists between sessions using JSON serialization
+- ReceiptModel generates both plain text (32-char width) and ESC/POS thermal printer commands
+- SaleRepository.generateReceipt() fetches sale with items and creates complete receipt
+- SyncWorker._syncSale() creates sales on server with items and updates local sync status
+- SyncWorker._syncProduct() handles product create/update with server ID mapping
+- All operations maintain local-first pattern: immediate write, background sync
+
 **Next Steps:**
-- Wire CartProvider to POS checkout screens
+- Wire CartProvider to POS checkout screens (UI integration)
 - Test end-to-end offline sales workflow
 - Complete Phase 4 documentation
 

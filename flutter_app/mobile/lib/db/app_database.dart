@@ -21,18 +21,12 @@ class EnumNameConverter<T extends Enum> extends TypeConverter<T, String> {
   final List<T> values;
 
   @override
-  T mapToDart(String? fromDb) {
-    if (fromDb == null) {
-      throw ArgumentError('Enum value cannot be null');
-    }
+  T fromSql(String fromDb) {
     return values.firstWhere((v) => v.name == fromDb);
   }
 
   @override
-  String mapToSql(T? value) {
-    if (value == null) {
-      throw ArgumentError('Enum value cannot be null');
-    }
+  String toSql(T value) {
     return value.name;
   }
 }
@@ -165,8 +159,7 @@ class SyncQueue extends Table {
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
-  TextColumn get status =>
-      text().withDefault(const Constant('pending'))();
+  TextColumn get status => text().withDefault(const Constant('pending'))();
   TextColumn get errorMessage => text().nullable()();
 }
 
@@ -241,12 +234,12 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(syncMeta);
 
             // 2. Migrate Products table: rename old table, create new one, copy data
-            await m.customStatement(
+            await m.issueCustomQuery(
                 'ALTER TABLE products RENAME TO products_old');
             await m.createTable(products);
 
             // Copy existing product data with default sync metadata
-            await m.customStatement('''
+            await m.issueCustomQuery('''
               INSERT INTO products (id, client_id, server_id, name, description, sku, 
                 price, stock_quantity, is_active, store_id, sync_status, 
                 last_updated_at, created_at)
@@ -257,15 +250,15 @@ class AppDatabase extends _$AppDatabase {
               FROM products_old
             ''');
 
-            await m.customStatement('DROP TABLE products_old');
+            await m.issueCustomQuery('DROP TABLE products_old');
 
             // 3. Migrate SyncQueue table
-            await m.customStatement(
+            await m.issueCustomQuery(
                 'ALTER TABLE sync_queue RENAME TO sync_queue_old');
             await m.createTable(syncQueue);
 
             // Copy sync queue data with new columns
-            await m.customStatement('''
+            await m.issueCustomQuery('''
               INSERT INTO sync_queue (id, client_temp_id, resource_type, operation,
                 entity_id, payload_json, created_at, last_attempt_at, retry_count, 
                 status, error_message)
@@ -275,7 +268,7 @@ class AppDatabase extends _$AppDatabase {
               FROM sync_queue_old
             ''');
 
-            await m.customStatement('DROP TABLE sync_queue_old');
+            await m.issueCustomQuery('DROP TABLE sync_queue_old');
           }
         },
       );

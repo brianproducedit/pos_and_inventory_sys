@@ -1,7 +1,6 @@
-import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
-import '../db/app_database.dart';
+import '../../db/app_database.dart';
 import 'product_repository_v2.dart';
 
 /// Store repository for local-first store management.
@@ -58,7 +57,7 @@ class StoreRepository extends BaseRepository<Store> {
         name: name != null ? Value(name) : const Value.absent(),
         location: location != null ? Value(location) : const Value.absent(),
         isActive: isActive != null ? Value(isActive) : const Value.absent(),
-        syncStatus: const Value(SyncStatus.pending),
+        syncStatus: Value(SyncStatus.pending),
         lastUpdatedAt: Value(DateTime.now()),
       ),
     );
@@ -89,7 +88,7 @@ class StoreRepository extends BaseRepository<Store> {
     await (db.update(db.stores)..where((s) => s.id.equals(id))).write(
       StoresCompanion(
         isActive: const Value(false),
-        syncStatus: const Value(SyncStatus.pending),
+        syncStatus: Value(SyncStatus.pending),
         lastUpdatedAt: Value(DateTime.now()),
       ),
     );

@@ -1,7 +1,6 @@
-import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
-import '../db/app_database.dart';
+import '../../db/app_database.dart';
 import 'product_repository_v2.dart';
 
 /// Sale repository for local-first sales management (offline checkout).
@@ -60,7 +59,7 @@ class SaleRepository extends BaseRepository<Sale> {
               ..where((p) => p.id.equals(item.productId)))
             .write(ProductsCompanion(
           stockQuantity: Value(product.stockQuantity - item.quantity),
-          syncStatus: const Value(SyncStatus.pending),
+          syncStatus: Value(SyncStatus.pending),
           lastUpdatedAt: Value(DateTime.now()),
         ));
 
@@ -95,9 +94,8 @@ class SaleRepository extends BaseRepository<Sale> {
 
   /// Get a sale by local ID with its items.
   Future<SaleWithItems?> getSaleWithItems(int saleId) async {
-    final sale =
-        await (db.select(db.sales)..where((s) => s.id.equals(saleId)))
-            .getSingleOrNull();
+    final sale = await (db.select(db.sales)..where((s) => s.id.equals(saleId)))
+        .getSingleOrNull();
 
     if (sale == null) return null;
 

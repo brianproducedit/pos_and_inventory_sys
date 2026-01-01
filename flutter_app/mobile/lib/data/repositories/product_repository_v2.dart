@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
-import '../db/app_database.dart';
+import '../../db/app_database.dart';
 
 /// Base repository interface defining local-first CRUD operations.
 /// All repositories follow the pattern: write to local DB immediately, enqueue for sync.
@@ -100,13 +100,14 @@ class ProductRepository extends BaseRepository<Product> {
     await (db.update(db.products)..where((p) => p.id.equals(id))).write(
       ProductsCompanion(
         name: name != null ? Value(name) : const Value.absent(),
-        description: description != null ? Value(description) : const Value.absent(),
+        description:
+            description != null ? Value(description) : const Value.absent(),
         sku: sku != null ? Value(sku) : const Value.absent(),
         price: price != null ? Value(price) : const Value.absent(),
         stockQuantity:
             stockQuantity != null ? Value(stockQuantity) : const Value.absent(),
         isActive: isActive != null ? Value(isActive) : const Value.absent(),
-        syncStatus: const Value(SyncStatus.pending),
+        syncStatus: Value(SyncStatus.pending),
         lastUpdatedAt: Value(DateTime.now()),
       ),
     );
@@ -141,7 +142,7 @@ class ProductRepository extends BaseRepository<Product> {
     await (db.update(db.products)..where((p) => p.id.equals(id))).write(
       ProductsCompanion(
         isActive: const Value(false),
-        syncStatus: const Value(SyncStatus.pending),
+        syncStatus: Value(SyncStatus.pending),
         lastUpdatedAt: Value(DateTime.now()),
       ),
     );
@@ -195,7 +196,7 @@ class ProductRepository extends BaseRepository<Product> {
     await (db.update(db.products)..where((p) => p.id.equals(productId))).write(
       ProductsCompanion(
         stockQuantity: Value(newQuantity),
-        syncStatus: const Value(SyncStatus.pending),
+        syncStatus: Value(SyncStatus.pending),
         lastUpdatedAt: Value(DateTime.now()),
       ),
     );

@@ -3,16 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
-import 'package:mobile/providers/pos_provider.dart';
+import 'package:mobile/providers/pos_provider_v2.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
-import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/widgets/product_card.dart';
 import 'package:mobile/widgets/primary_button.dart';
+import 'package:mobile/db/app_database.dart';
 
 class PosScreen extends StatefulWidget {
   const PosScreen({super.key});
@@ -31,9 +31,9 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Load products when screen initializes
+    // V2: Setup providers - products load automatically via streams
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final posProvider = context.read<PosProvider>();
+      final posProvider = context.read<PosProviderV2>();
       final storeProvider = context.read<StoreProvider>();
 
       try {
@@ -48,7 +48,6 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
       // Set auth provider for role-aware product loading
       final auth = context.read<AuthProvider>();
       posProvider.setAuthProvider(auth);
-      posProvider.setSyncProvider(context.read<SyncProvider>());
 
       // Prevent non-admins from being left on All Stores: fallback to myStore if needed
       if (storeProvider.currentStore == null &&
@@ -58,19 +57,11 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
           await storeProvider.switchStore(storeProvider.myStores.first);
         }
       }
-
-      await posProvider.loadProducts();
+      // V2: No manual loadProducts() needed - streams handle it
     });
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // Reload products when app comes back to foreground
-      final posProvider = context.read<PosProvider>();
-      unawaited(posProvider.loadProducts());
-    }
-  }
+  // V2: No need to reload on resume - streams keep data fresh automatically
 
   @override
   void dispose() {
@@ -100,15 +91,8 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
                     if (context.watch<AuthProvider>().role == 'superadmin' ||
                         context.watch<AuthProvider>().role == 'admin')
                       const StoreQuickAction(),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white),
-                      tooltip: 'Refresh products',
-                      onPressed: () {
-                        final posProvider = context.read<PosProvider>();
-                        unawaited(posProvider.loadProducts());
-                      },
-                    ),
-                    Consumer<PosProvider>(
+                    // V2: Refresh button removed - streams auto-update
+                    Consumer<PosProviderV2>(
                       builder: (context, posProvider, child) {
                         return IconButton(
                           tooltip: 'Open cart',
@@ -127,11 +111,9 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
           ),
         ),
       ),
-      body: Consumer<PosProvider>(
+      body: Consumer<PosProviderV2>(
         builder: (context, posProvider, child) {
-          if (posProvider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
+          // V2: No loading state - local DB is instant
 
           if (posProvider.errorMessage != null) {
             return Center(child: Text(posProvider.errorMessage!));
@@ -142,12 +124,7 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
           // Filtered list according to search query (case-insensitive substring match)
           final displayedProducts = _searchQuery.isEmpty
               ? products
-              : products
-                  .where((p) => (p['name'] ?? '')
-                      .toString()
-                      .toLowerCase()
-                      .contains(_searchQuery))
-                  .toList();
+              : posProvider.searchProducts(_searchQuery);
 
           return Column(
             children: [
@@ -239,11 +216,11 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showCartDialog(BuildContext mainContext, PosProvider posProvider) {
+  void _showCartDialog(BuildContext mainContext, PosProviderV2 posProvider) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
-        return Consumer<PosProvider>(
+        return Consumer<PosProviderV2>(
           builder: (context, provider, child) {
             return AlertDialog(
               title: Row(
@@ -274,15 +251,12 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
                         itemCount: provider.cart.length,
                         itemBuilder: (context, index) {
                           final item = provider.cart[index];
-                          final product = item['product'];
-                          final quantity = item['quantity'];
-                          final price = product['price'] ?? 0.0;
-                          final subtotal = quantity * price;
+                          final subtotal = item.lineTotal;
 
                           return ListTile(
-                            title: Text(product['name'] ?? 'Unknown Product'),
+                            title: Text(item.productName),
                             subtitle: Text(
-                                'Qty: $quantity × \$${price.toStringAsFixed(2)}'),
+                                'Qty: ${item.quantity} × \$${item.unitPrice.toStringAsFixed(2)}'),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -290,15 +264,15 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
                                   icon: const Icon(Icons.remove),
                                   onPressed: () {
                                     provider.updateQuantity(
-                                        product['id'], quantity - 1);
+                                        item.productId, item.quantity - 1);
                                   },
                                 ),
-                                Text('$quantity'),
+                                Text('${item.quantity}'),
                                 IconButton(
                                   icon: const Icon(Icons.add),
                                   onPressed: () {
                                     provider.updateQuantity(
-                                        product['id'], quantity + 1);
+                                        item.productId, item.quantity + 1);
                                   },
                                 ),
                                 Text('\$${subtotal.toStringAsFixed(2)}'),
@@ -330,7 +304,7 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _processSale(BuildContext context, PosProvider posProvider) async {
+  void _processSale(BuildContext context, PosProviderV2 posProvider) async {
     // Show payment method selection dialog
     final paymentMethod = await showDialog<String>(
       context: context,

@@ -200,8 +200,7 @@ class UserRepository {
 
   /// Check if username already exists
   Future<bool> usernameExists(String username, {int? excludeUserId}) async {
-    var query = db.select(db.users)
-      ..where((u) => u.username.equals(username));
+    var query = db.select(db.users)..where((u) => u.username.equals(username));
 
     if (excludeUserId != null) {
       query = query..where((u) => u.id.isNotValue(excludeUserId));

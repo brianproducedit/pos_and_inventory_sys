@@ -5,12 +5,12 @@ import '../../db/app_database.dart';
 
 /// Inventory log entry type
 enum InventoryLogType {
-  adjustment,  // Manual stock adjustment
-  sale,        // Stock reduced by sale
-  restock,     // Stock added by restock
-  transfer,    // Stock transferred between stores
-  damaged,     // Stock marked as damaged/lost
-  return_,     // Stock returned by customer
+  adjustment, // Manual stock adjustment
+  sale, // Stock reduced by sale
+  restock, // Stock added by restock
+  transfer, // Stock transferred between stores
+  damaged, // Stock marked as damaged/lost
+  return_, // Stock returned by customer
 }
 
 /// Repository for inventory management and stock tracking
@@ -159,7 +159,8 @@ class InventoryRepository {
       productId: productId,
       quantity: -quantity, // Remove from current store
       userId: userId,
-      reason: 'Transferred to store $toStoreId${notes != null ? ': $notes' : ''}',
+      reason:
+          'Transferred to store $toStoreId${notes != null ? ': $notes' : ''}',
       type: InventoryLogType.transfer,
     );
   }
@@ -268,8 +269,7 @@ class InventoryRepository {
 
   /// Get inventory summary statistics
   Future<InventorySummary> getInventorySummary({int? storeId}) async {
-    var query = db.select(db.products)
-      ..where((p) => p.isActive.equals(true));
+    var query = db.select(db.products)..where((p) => p.isActive.equals(true));
 
     if (storeId != null) {
       query = query..where((p) => p.storeId.equals(storeId));
@@ -282,8 +282,7 @@ class InventoryRepository {
       0,
       (sum, product) => sum + (product.price * product.stockQuantity),
     );
-    final lowStockCount =
-        products.where((p) => p.stockQuantity <= 10).length;
+    final lowStockCount = products.where((p) => p.stockQuantity <= 10).length;
     final outOfStockCount = products.where((p) => p.stockQuantity == 0).length;
     final totalStockUnits =
         products.fold<int>(0, (sum, product) => sum + product.stockQuantity);

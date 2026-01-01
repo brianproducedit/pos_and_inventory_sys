@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../../db/app_database.dart';
+import '../../models/receipt_model.dart';
 import 'product_repository_v2.dart';
 
 /// Sale repository for local-first sales management (offline checkout).
@@ -132,6 +133,66 @@ class SaleRepository extends BaseRepository<Sale> {
     return 'TXN${now.year}${now.month.toString().padLeft(2, '0')}'
         '${now.day.toString().padLeft(2, '0')}'
         '${now.millisecondsSinceEpoch % 100000}';
+  }
+
+  /// Generate receipt for a sale
+  Future<ReceiptModel> generateReceipt({
+    required int saleId,
+    String storeName = 'POS Store',
+    String? storeAddress,
+    String? storePhone,
+    String cashierName = 'Cashier',
+    double? taxRate,
+    String? footerMessage,
+  }) async {
+    final saleWithItems = await getSaleWithItems(saleId);
+    if (saleWithItems == null) {
+      throw Exception('Sale not found');
+    }
+
+    final sale = saleWithItems.sale;
+    final items = saleWithItems.items;
+
+    // Build receipt line items
+    final receiptItems = <ReceiptLineItem>[];
+    for (final item in items) {
+      // Get product name
+      final product = await (db.select(db.products)
+            ..where((p) => p.id.equals(item.productId)))
+          .getSingle();
+
+      receiptItems.add(ReceiptLineItem(
+        name: product.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        total: item.totalPrice,
+      ));
+    }
+
+    // Calculate tax if rate provided
+    double? taxAmount;
+    if (taxRate != null && taxRate > 0) {
+      taxAmount = sale.totalAmount * (taxRate / (100 + taxRate));
+    }
+
+    final subtotal = taxAmount != null ? sale.totalAmount - taxAmount : sale.totalAmount;
+
+    return ReceiptModel(
+      transactionNumber: sale.transactionNumber,
+      date: sale.createdAt,
+      storeName: storeName,
+      storeAddress: storeAddress,
+      storePhone: storePhone,
+      cashierName: cashierName,
+      items: receiptItems,
+      subtotal: subtotal,
+      taxRate: taxRate,
+      taxAmount: taxAmount,
+      total: sale.totalAmount,
+      paymentMethod: sale.paymentMethod,
+      paymentReference: sale.paymentReference,
+      footerMessage: footerMessage,
+    );
   }
 }
 

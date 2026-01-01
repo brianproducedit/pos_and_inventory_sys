@@ -151,6 +151,83 @@ class ApiClient {
     }
   }
 
+  /// Create sale on server
+  Future<Map<String, dynamic>> createSale({
+    required String token,
+    required Map<String, dynamic> saleData,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/sales'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(saleData),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to create sale',
+      );
+    }
+  }
+
+  /// Create product on server
+  Future<Map<String, dynamic>> createProduct({
+    required String token,
+    required Map<String, dynamic> productData,
+  }) async {
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/products'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(productData),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to create product',
+      );
+    }
+  }
+
+  /// Update product on server
+  Future<Map<String, dynamic>> updateProduct({
+    required String token,
+    required int productId,
+    required Map<String, dynamic> productData,
+  }) async {
+    final response = await _client.put(
+      Uri.parse('$baseUrl/api/products/$productId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(productData),
+    );
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to update product',
+      );
+    }
+  }
+
+
   /// Push sync changes to server
   Future<SyncPushResponse> pushSync(List<Map<String, dynamic>> changes) async {
     // TODO: Implement batch sync endpoint when available

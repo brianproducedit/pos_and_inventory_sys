@@ -136,7 +136,8 @@ class SyncWorker {
               lastUpdatedAt: Value(DateTime.now()),
             ));
 
-            print('SyncWorker: User created on server, id: ${serverUser['id']}');
+            print(
+                'SyncWorker: User created on server, id: ${serverUser['id']}');
           } catch (e) {
             print('SyncWorker: Failed to create user on server: $e');
             rethrow;
@@ -200,14 +201,132 @@ class SyncWorker {
   Future<void> _syncProduct(
       SyncQueueData item, Map<String, dynamic> payload) async {
     print('SyncWorker: Syncing product: ${item.operation}');
-    // TODO: Implement when Phase 3 is active
+
+    final token = await secureStorage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('No auth token available for sync');
+    }
+
+    if (item.operation == 'create') {
+      // Create product on server
+      if (item.clientTempId != null) {
+        final localProduct = await (db.select(db.products)
+              ..where((p) => p.clientId.equals(item.clientTempId!)))
+            .getSingleOrNull();
+
+        if (localProduct != null) {
+          try {
+            final serverProduct = await apiClient.createProduct(
+              token: token,
+              productData: payload,
+            );
+
+            await (db.update(db.products)
+                  ..where((p) => p.id.equals(localProduct.id)))
+                .write(ProductsCompanion(
+              serverId: Value(serverProduct['id'] as int),
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(DateTime.now()),
+            ));
+
+            print('SyncWorker: Product created on server, id: ${serverProduct['id']}');
+          } catch (e) {
+            print('SyncWorker: Failed to create product on server: $e');
+            rethrow;
+          }
+        }
+      }
+    } else if (item.operation == 'update') {
+      // Update product on server
+      final productId = payload['id'] as int?;
+      if (productId != null) {
+        try {
+          final updateData = Map<String, dynamic>.from(payload);
+          updateData.remove('id');
+          updateData.remove('client_id');
+
+          await apiClient.updateProduct(
+            token: token,
+            productId: productId,
+            productData: updateData,
+          );
+
+          final localProduct = await (db.select(db.products)
+                ..where((p) => p.serverId.equals(productId)))
+              .getSingleOrNull();
+
+          if (localProduct != null) {
+            await (db.update(db.products)
+                  ..where((p) => p.id.equals(localProduct.id)))
+                .write(ProductsCompanion(
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(DateTime.now()),
+            ));
+          }
+
+          print('SyncWorker: Product updated on server, id: $productId');
+        } catch (e) {
+          print('SyncWorker: Failed to update product on server: $e');
+          rethrow;
+        }
+      }
+    }
   }
 
   /// Sync sale changes
   Future<void> _syncSale(
       SyncQueueData item, Map<String, dynamic> payload) async {
     print('SyncWorker: Syncing sale: ${item.operation}');
-    // TODO: Implement when Phase 4 is active
+
+    final token = await secureStorage.read(key: 'access_token');
+    if (token == null) {
+      throw Exception('No auth token available for sync');
+    }
+
+    if (item.operation == 'create') {
+      // Create sale on server
+      if (item.clientTempId != null) {
+        final localSale = await (db.select(db.sales)
+              ..where((s) => s.clientId.equals(item.clientTempId!)))
+            .getSingleOrNull();
+
+        if (localSale != null) {
+          try {
+            final serverSale = await apiClient.createSale(
+              token: token,
+              saleData: payload,
+            );
+
+            // Update sale with server ID
+            await (db.update(db.sales)
+                  ..where((s) => s.id.equals(localSale.id)))
+                .write(SalesCompanion(
+              serverId: Value(serverSale['id'] as int),
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(DateTime.now()),
+            ));
+
+            // Update sale items sync status
+            final saleItems = await (db.select(db.saleItems)
+                  ..where((si) => si.saleId.equals(localSale.id)))
+                .get();
+
+            for (final saleItem in saleItems) {
+              await (db.update(db.saleItems)
+                    ..where((si) => si.id.equals(saleItem.id)))
+                  .write(SaleItemsCompanion(
+                syncStatus: Value(SyncStatus.synced),
+              ));
+            }
+
+            print('SyncWorker: Sale created on server, id: ${serverSale['id']}');
+          } catch (e) {
+            print('SyncWorker: Failed to create sale on server: $e');
+            rethrow;
+          }
+        }
+      }
+    }
   }
 
   /// Sync store changes

@@ -39,19 +39,3 @@ def downgrade() -> None:
     op.drop_column('users', 'full_name')
     op.drop_column('users', 'is_active')
     op.drop_column('stores', 'is_active')
-
-
-def downgrade() -> None:
-    """Downgrade schema."""
-    # Remove columns in reverse order
-    op.drop_column('users', 'full_name')
-    op.drop_column('users', 'is_active')
-    op.drop_column('stores', 'is_active')
-
-
-def downgrade() -> None:
-    """Downgrade schema."""
-    # Remove columns in reverse order
-    op.drop_column('users', 'full_name')
-    op.drop_column('users', 'is_active')
-    op.drop_column('stores', 'is_active')

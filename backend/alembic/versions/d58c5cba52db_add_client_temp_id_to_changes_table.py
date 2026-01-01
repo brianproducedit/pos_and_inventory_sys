@@ -19,8 +19,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema: add client_temp_id column to changes table."""
-    op.add_column('changes', sa.Column('client_temp_id', sa.String(length=128), nullable=True))
+    """Upgrade schema: add client_temp_id column to changes table (idempotent)."""
+    # Check if column already exists (it's created in e5f1d2c3b4a6)
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    columns = [col['name'] for col in inspector.get_columns('changes')]
+    if 'client_temp_id' not in columns:
+        op.add_column('changes', sa.Column('client_temp_id', sa.String(length=128), nullable=True))
 
 
 def downgrade() -> None:

@@ -1,25 +1,158 @@
 import 'dart:io';
 
 import 'package:drift/drift.dart';
-import 'package:drift_sqflite/drift_sqflite.dart';
 import 'package:drift/native.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:drift_sqflite/drift_sqflite.dart';
 import 'package:path/path.dart' as p;
-// import 'package:uuid/uuid.dart';
+import 'package:path_provider/path_provider.dart';
 
 part 'app_database.g.dart';
 
+/// Sync status used across all syncable tables.
+enum SyncStatus { synced, pending, conflict, error }
+
+/// Application roles aligned with the backend.
+enum UserRole { superadmin, admin, cashier }
+
+/// Generic enum<->string converter so Drift can persist enum values.
+class EnumNameConverter<T extends Enum> extends TypeConverter<T, String> {
+  const EnumNameConverter(this.values);
+
+  final List<T> values;
+
+  @override
+  T mapToDart(String? fromDb) {
+    if (fromDb == null) {
+      throw ArgumentError('Enum value cannot be null');
+    }
+    return values.firstWhere((v) => v.name == fromDb);
+  }
+
+  @override
+  String mapToSql(T? value) {
+    if (value == null) {
+      throw ArgumentError('Enum value cannot be null');
+    }
+    return value.name;
+  }
+}
+
+const syncStatusConverter = EnumNameConverter<SyncStatus>(SyncStatus.values);
+const userRoleConverter = EnumNameConverter<UserRole>(UserRole.values);
+
+class Users extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
+  TextColumn get username => text()();
+  TextColumn get passwordHash => text()();
+  TextColumn get fullName => text().nullable()();
+  TextColumn get role => text().map(userRoleConverter)();
+  IntColumn get storeId => integer().nullable().references(Stores, #id)();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  BoolColumn get mustChangePassword =>
+      boolean().withDefault(const Constant(false))();
+  BoolColumn get isLocalOnly => boolean().withDefault(const Constant(false))();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+  DateTimeColumn get lastUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class Stores extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
+  TextColumn get name => text()();
+  TextColumn get location => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  IntColumn get createdBy => integer().nullable()();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+  DateTimeColumn get lastUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
 class Products extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get clientId => text().nullable()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
   TextColumn get name => text()();
   TextColumn get description => text().nullable()();
+  TextColumn get sku => text().nullable()();
   RealColumn get price => real().withDefault(const Constant(0.0))();
   IntColumn get stockQuantity => integer().withDefault(const Constant(0))();
   BoolColumn get isActive => boolean().withDefault(const Constant(true))();
-  IntColumn get storeId => integer().nullable()();
+  IntColumn get storeId => integer().references(Stores, #id)();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+  DateTimeColumn get lastUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
-  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class Sales extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
+  TextColumn get transactionNumber => text()();
+  IntColumn get userId => integer().references(Users, #id)();
+  IntColumn get storeId => integer().references(Stores, #id)();
+  RealColumn get totalAmount => real()();
+  TextColumn get paymentMethod => text()();
+  TextColumn get paymentReference => text().nullable()();
+  TextColumn get status => text().withDefault(const Constant('completed'))();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+  DateTimeColumn get lastUpdatedAt =>
+      dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+}
+
+class SaleItems extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
+  IntColumn get saleId => integer().references(Sales, #id)();
+  IntColumn get productId => integer().references(Products, #id)();
+  IntColumn get quantity => integer()();
+  RealColumn get unitPrice => real()();
+  RealColumn get totalPrice => real()();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+}
+
+class InventoryLogs extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get clientId => text().withDefault(const Constant(''))();
+  IntColumn get serverId => integer().nullable()();
+
+  IntColumn get productId => integer().references(Products, #id)();
+  IntColumn get userId => integer().references(Users, #id)();
+  IntColumn get quantityChange => integer()();
+  TextColumn get reason => text()();
+
+  TextColumn get syncStatus => text()
+      .map(syncStatusConverter)
+      .withDefault(Constant(SyncStatus.pending.name))();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
 class SyncQueue extends Table {
@@ -27,12 +160,48 @@ class SyncQueue extends Table {
   TextColumn get clientTempId => text().nullable()();
   TextColumn get resourceType => text()();
   TextColumn get operation => text()();
+  TextColumn get entityId => text().nullable()();
   TextColumn get payloadJson => text()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get lastAttemptAt => dateTime().nullable()();
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get status =>
+      text().withDefault(const Constant('pending'))();
+  TextColumn get errorMessage => text().nullable()();
 }
 
-@DriftDatabase(tables: [Products, SyncQueue])
+class SyncConflicts extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get resourceType => text()();
+  TextColumn get resourceId => text()();
+  TextColumn get localDataJson => text()();
+  TextColumn get serverDataJson => text()();
+  TextColumn get resolution => text().nullable()();
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get resolvedAt => dateTime().nullable()();
+}
+
+class SyncMeta extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
+@DriftDatabase(
+  tables: [
+    Users,
+    Stores,
+    Products,
+    Sales,
+    SaleItems,
+    InventoryLogs,
+    SyncQueue,
+    SyncConflicts,
+    SyncMeta,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -52,42 +221,107 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
-  // Products DAO
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) async {
+          await m.createAll();
+        },
+        onUpgrade: (m, from, to) async {
+          if (from == 1 && to == 2) {
+            // Migrate from V1 to V2 schema (add sync metadata columns)
+            // 1. Create new tables
+            await m.createTable(users);
+            await m.createTable(stores);
+            await m.createTable(sales);
+            await m.createTable(saleItems);
+            await m.createTable(inventoryLogs);
+            await m.createTable(syncConflicts);
+            await m.createTable(syncMeta);
+
+            // 2. Migrate Products table: rename old table, create new one, copy data
+            await m.customStatement(
+                'ALTER TABLE products RENAME TO products_old');
+            await m.createTable(products);
+
+            // Copy existing product data with default sync metadata
+            await m.customStatement('''
+              INSERT INTO products (id, client_id, server_id, name, description, sku, 
+                price, stock_quantity, is_active, store_id, sync_status, 
+                last_updated_at, created_at)
+              SELECT id, COALESCE(client_id, ''), id, name, description, NULL,
+                price, stock_quantity, is_active, store_id, 'synced',
+                COALESCE(updated_at, created_at, datetime('now')), 
+                COALESCE(created_at, datetime('now'))
+              FROM products_old
+            ''');
+
+            await m.customStatement('DROP TABLE products_old');
+
+            // 3. Migrate SyncQueue table
+            await m.customStatement(
+                'ALTER TABLE sync_queue RENAME TO sync_queue_old');
+            await m.createTable(syncQueue);
+
+            // Copy sync queue data with new columns
+            await m.customStatement('''
+              INSERT INTO sync_queue (id, client_temp_id, resource_type, operation,
+                entity_id, payload_json, created_at, last_attempt_at, retry_count, 
+                status, error_message)
+              SELECT id, client_temp_id, resource_type, operation, NULL,
+                payload_json, datetime('now'), last_attempt_at, retry_count,
+                'pending', NULL
+              FROM sync_queue_old
+            ''');
+
+            await m.customStatement('DROP TABLE sync_queue_old');
+          }
+        },
+      );
+
+  // Products DAO (legacy-friendly methods retained while V2 repositories land)
   Future<int> insertProduct(ProductsCompanion entry) =>
       into(products).insert(entry);
+
   Future<List<Product>> getAllProducts() => select(products).get();
+
   Future<Product?> getProductByClientId(String clientId) =>
       (select(products)..where((p) => p.clientId.equals(clientId)))
           .getSingleOrNull();
-  Future<int> updateProductServerId(String clientId, int serverId) async {
-    final p = await getProductByClientId(clientId);
-    if (p == null) return 0;
+
+  Future<int> updateProductServerId(String clientId, int serverId) {
     return (update(products)..where((tbl) => tbl.clientId.equals(clientId)))
         .write(
       ProductsCompanion(
-        clientId: Value(null),
+        serverId: Value(serverId),
+        syncStatus: Value(SyncStatus.synced),
+        clientId: const Value(''),
       ),
     );
   }
 
   // Sync queue DAO
-  Future<int> enqueueChange(
-      {String? clientTempId,
-      required String resourceType,
-      required String operation,
-      required String payloadJson}) {
+  Future<int> enqueueChange({
+    String? clientTempId,
+    required String resourceType,
+    required String operation,
+    required String payloadJson,
+    String? entityId,
+  }) {
     return into(syncQueue).insert(SyncQueueCompanion.insert(
       clientTempId:
           clientTempId == null ? const Value.absent() : Value(clientTempId),
       resourceType: resourceType,
       operation: operation,
+      entityId: entityId == null ? const Value.absent() : Value(entityId),
       payloadJson: payloadJson,
     ));
   }
 
-  Future<List<SyncQueueData>> getPendingChanges() => select(syncQueue).get();
+  Future<List<SyncQueueData>> getPendingChanges() =>
+      (select(syncQueue)..where((q) => q.status.equals('pending'))).get();
+
   Future<int> deleteQueueItem(int id) =>
       (delete(syncQueue)..where((t) => t.id.equals(id))).go();
 

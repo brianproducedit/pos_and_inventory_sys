@@ -1,167 +1,143 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:mobile/models/database_models.dart';
-import 'package:mobile/services/auth_service.dart';
-import '../data/local/database_helper.dart';
-import '../data/remote/postgres_api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../db/app_database.dart';
+import '../services/offline_auth_service.dart';
+import '../data/remote/api_client.dart';
 
 class AuthProvider with ChangeNotifier {
+  final OfflineAuthService _offlineAuthService;
   User? _user;
   bool _isAuthenticated = false;
-  String? _role;
 
   User? get user => _user;
   bool get isAuthenticated => _isAuthenticated;
-  String? get role => _role;
 
   // Convenience getters
   int? get userId => _user?.id;
   int? get storeId => _user?.storeId;
   String? get username => _user?.username;
+  UserRole? get role => _user?.role;
+  String? get roleString => _user?.role.name;
 
-  Future<String?> getToken() async {
-    return await _authService.getToken();
-  }
+  AuthProvider({
+    required AppDatabase db,
+    required ApiClient apiClient,
+  }) : _offlineAuthService = OfflineAuthService(
+          db: db,
+          apiClient: apiClient,
+        );
 
-  Future<void> _seedLocalDbIfNeeded() async {
-    try {
-      final token = await _authService.getToken();
-      if (token == null) return;
-
-      final dbHelper = DatabaseHelper();
-      final db = await dbHelper.database;
-      // Query a single row to avoid expensive counts on large DBs; if less than
-      // threshold rows exist we'll trigger the full seed.
-      final rows =
-          await db.query('products', limit: _localProductSeedThreshold);
-      if (rows.length >= _localProductSeedThreshold) {
-        // DB already seeded sufficiently
-        return;
-      }
-
-      // Attempt to fetch initial data and seed DB; non-fatal so we catch errors
-      try {
-        final api = PostgresApiService();
-        await api.fetchInitialDataAndSeedDB(token: token, dbHelper: dbHelper);
-        debugPrint('AuthProvider: initial DB seed completed');
-      } catch (e) {
-        debugPrint('AuthProvider: initial DB seed failed: $e');
-      }
-    } catch (e) {
-      debugPrint('AuthProvider: seedLocalDb check failed: $e');
-    }
-  }
-
-  final AuthService _authService = AuthService();
-
-  // Threshold under which we consider the local DB "sparse" and attempt an initial seed
-  static const int _localProductSeedThreshold = 10;
-
+  /// Login with username and password (offline-first)
   Future<void> login(String username, String password) async {
     try {
-      await _authService.login(username, password);
-      // Assume data has user info, but for now, fetch from /users/me
-      await _fetchUserInfo();
-      _isAuthenticated = true;
-      notifyListeners();
-      // Fire-and-forget: ensure local DB seeding occurs when a freshly-logged-in
-      // device appears to have a sparse products table. This helps devices that
-      // missed initial seeding to fetch the canonical product catalog.
-      unawaited(_seedLocalDbIfNeeded());
-    } catch (e) {
-      // If login fails (likely offline), try offline login with the same credentials
-      debugPrint('Online login failed, attempting offline login: $e');
-      final dbHelper = DatabaseHelper();
-      final offlineOk = await _authService.offlineLogin(
-        dbHelper,
-        username: username,
-        password: password,
-      );
-      if (offlineOk) {
-        final db = await dbHelper.database;
-        final userRows = await db.query('users',
-            where: 'username = ?', whereArgs: [username], limit: 1);
-        if (userRows.isNotEmpty) {
-          _user = User.fromMap(userRows.first);
-          _role = _user!.role;
-          _isAuthenticated = true;
-          notifyListeners();
-          debugPrint('Offline login successful for user: $username');
-          return;
-        }
+      final result = await _offlineAuthService.login(username, password);
+
+      if (result.success && result.user != null) {
+        _user = result.user;
+        _isAuthenticated = true;
+        notifyListeners();
+        debugPrint('Login successful for user: $username (${result.user!.role.name})');
+      } else {
+        throw AuthException(
+          'login_failed',
+          result.message ?? 'Login failed',
+        );
       }
-      // Re-throw with more context if offline login also failed
-      throw AuthException('offline_failed',
-          'Login failed. Please check your credentials or connect to the internet.');
+    } catch (e) {
+      debugPrint('Login error: $e');
+      rethrow;
     }
   }
 
-  Future<void> _fetchUserInfo() async {
-    final userData = await _authService.getUserInfo();
-    // Normalize role to lowercase trimmed string to avoid mismatches
-    final rawRole = userData['role']?.toString() ?? '';
-    final normalizedRole = rawRole.toLowerCase().trim();
-
-    _user = User(
-      id: userData['id'],
-      username: userData['username'],
-      passwordHash: userData['password_hash'] ?? '',
-      role: normalizedRole,
-      storeId: userData['store_id'],
-      createdAt: DateTime.parse(userData['created_at']),
-      updatedAt: DateTime.parse(userData['updated_at']),
+  /// Create a ghost user (offline user creation)
+  Future<User> createGhostUser({
+    required String username,
+    required String password,
+    required String fullName,
+    required UserRole role,
+    int? storeId,
+  }) async {
+    final result = await _offlineAuthService.createGhostUser(
+      username: username,
+      password: password,
+      fullName: fullName,
+      role: role,
+      storeId: storeId,
     );
-    _role = normalizedRole;
-    // Store normalized role in prefs
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('user_role', _role!);
+
+    if (!result.success || result.user == null) {
+      throw AuthException(
+        'create_user_failed',
+        result.message ?? 'Failed to create user',
+      );
+    }
+
+    return result.user!;
   }
 
+  /// Change password for current user
+  Future<void> changePassword({
+    required String oldPassword,
+    required String newPassword,
+  }) async {
+    if (_user == null) {
+      throw AuthException('not_authenticated', 'No user is logged in');
+    }
+
+    final result = await _offlineAuthService.changePassword(
+      userId: _user!.id,
+      oldPassword: oldPassword,
+      newPassword: newPassword,
+    );
+
+    if (result.success && result.user != null) {
+      _user = result.user;
+      notifyListeners();
+    } else {
+      throw AuthException(
+        'change_password_failed',
+        result.message ?? 'Failed to change password',
+      );
+    }
+  }
+
+  /// Logout
   Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('access_token');
-    await prefs.remove('user_role');
+    await _offlineAuthService.logout();
     _user = null;
     _isAuthenticated = false;
-    _role = null;
     notifyListeners();
   }
 
+  /// Check authentication status on app start
   Future<void> checkAuthStatus() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('access_token');
-    final role = prefs.getString('user_role');
-    if (token != null && role != null) {
-      // Use stored role immediately to avoid UI flashing incorrect options
-      _role = role.toLowerCase().trim();
-      _isAuthenticated = true;
-      notifyListeners();
-      try {
-        // Try to fetch fresh user data from server
-        await _fetchUserInfo();
+    try {
+      final currentUser = await _offlineAuthService.getCurrentUser();
+      if (currentUser != null) {
+        _user = currentUser;
         _isAuthenticated = true;
         notifyListeners();
-      } catch (e) {
-        // If fetching user info fails (offline), try to load from local DB
-        try {
-          final dbHelper = DatabaseHelper();
-          final db = await dbHelper.database;
-          final userRows = await db.query('users', limit: 1);
-          if (userRows.isNotEmpty) {
-            final userMap = userRows.first;
-            _user = User.fromMap(userMap);
-            _role = _user!.role;
-            _isAuthenticated = true;
-            notifyListeners();
-          }
-        } catch (e) {
-          // If local DB also fails, do not log out, just keep current state
-          debugPrint(
-              'AuthProvider: offline and failed to load user from local DB: $e');
-        }
+        debugPrint('Restored session for user: ${currentUser.username}');
       }
+    } catch (e) {
+      debugPrint('Failed to restore session: $e');
     }
   }
+
+  /// Get access token (for API calls)
+  Future<String?> getToken() async {
+    return await _offlineAuthService.secureStorage.read(key: 'access_token');
+  }
+}
+
+/// Authentication exception
+class AuthException implements Exception {
+  final String code;
+  final String message;
+
+  AuthException(this.code, this.message);
+
+  @override
+  String toString() => 'AuthException($code): $message';
 }

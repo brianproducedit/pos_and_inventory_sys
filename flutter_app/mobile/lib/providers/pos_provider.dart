@@ -109,7 +109,7 @@ class PosProvider with ChangeNotifier {
       final int? normalizedId = _normalizeStoreId(storeId);
 
       // Determine role: prefer injected AuthProvider, otherwise consult prefs
-      String? role = _authProvider?.role;
+      String? role = _authProvider?.role?.toString().split('.').last;
       if (role == null) {
         final prefs = await SharedPreferences.getInstance();
         role = prefs.getString('user_role')?.toLowerCase();

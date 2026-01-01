@@ -163,19 +163,26 @@ This roadmap outlines the complete transformation to a true offline-first archit
 | 1.5 Set up base SyncQueue operations | HIGH | ✅ |
 
 **Completed:** January 1, 2026  
-**Commit:** 9c4a896 - feat(v2-phase1): implement unified Drift schema with local-first repositories
+**Commits:** 
+- 9c4a896 - feat(v2-phase1): implement unified Drift schema with local-first repositories
+- 306c538 - fix(drift): resolve TypeConverter, migration, and const issues
+- bde276e - fix(connectivity): correct ConnectivityResult type signature
 
-### Phase 2: Authentication (Week 2-3)
+**Note:** Run `flutter pub run build_runner build --delete-conflicting-outputs` to generate Drift companion classes before proceeding to Phase 2.
+
+### Phase 2: Authentication (Week 2-3) 🚧 IN PROGRESS
 **Goal:** Enable full offline authentication
 
 | Task | Priority | Status |
 |------|----------|--------|
-| 2.1 Design local Users table with password hash | HIGH | ⬜ |
-| 2.2 Implement "First Contact" login flow | HIGH | ⬜ |
-| 2.3 Implement offline authentication check | HIGH | ⬜ |
+| 2.1 Design local Users table with password hash | HIGH | ✅ |
+| 2.2 Implement "First Contact" login flow | HIGH | 🚧 |
+| 2.3 Implement offline authentication check | HIGH | 🚧 |
 | 2.4 Implement "Ghost User" creation flow | HIGH | ⬜ |
 | 2.5 Sync new users to backend when online | HIGH | ⬜ |
 | 2.6 Handle password changes and sync | MEDIUM | ⬜ |
+
+**Started:** January 1, 2026
 
 ### Phase 3: CRUD Operations (Week 3-4)
 **Goal:** All management screens work offline

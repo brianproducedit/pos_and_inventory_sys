@@ -23,8 +23,8 @@ def upgrade() -> None:
     # Add is_active column to products table
     op.add_column('products', sa.Column('is_active', sa.Boolean(), nullable=True, default=True))
 
-    # Set default value for existing records
-    op.execute("UPDATE products SET is_active = 1 WHERE is_active IS NULL")
+    # Set default value for existing records (use TRUE for PostgreSQL boolean)
+    op.execute("UPDATE products SET is_active = TRUE WHERE is_active IS NULL")
 
 
 def downgrade() -> None:

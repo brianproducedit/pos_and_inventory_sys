@@ -7,12 +7,12 @@ import 'package:provider/provider.dart';
 import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
-import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/screens/edit_product_screen.dart';
+import 'package:mobile/db/app_database.dart';
 
 class InventoryScreen extends StatefulWidget {
   const InventoryScreen({super.key});
@@ -83,7 +83,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         title: const Text('Change Product Status'),
         content: Text(
             'Are you sure you want to ${activate ? 'activate' : 'deactivate'} ${_selectedProductIds.length} selected products?'),
-        actions: [V2
+        actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel')),
@@ -161,14 +161,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
-  Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
+  Future<void> _confirmDeleteProduct(Product product) async {
     final inventoryProvider = context.read<InventoryProviderV2>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Product'),
         content: Text(
-            'Are you sure you want to permanently delete "${product['name'] ?? 'this product'}"? This action cannot be undone.'),
+            'Are you sure you want to permanently delete "${product.name}"? This action cannot be undone.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(false),
@@ -184,11 +184,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
     if (ok != true) return;
 
     try {
-      await inventoryProvider.deleteProduct(product['id']);
+      await inventoryProvider.deleteProduct(product.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content:
-                Text('Product "${product['name'] ?? 'Product'}" deleted')));
+                Text('Product "${product.name}" deleted')));
       }
     } catch (e) {
       if (context.mounted) {
@@ -202,80 +202,33 @@ class _InventoryScreenState extends State<InventoryScreen> {
     setState(() => _selectedProductIds.clear());
   }
 
-  /// Attempts to resolve a full product map from current products by id or name,
-  /// falls back to a minimal product map if necessary, then navigates to
-  /// the edit product screen after closing the alert dialog.
-  void _openProductFromAlert(Map<String, dynamic> alert) {
-    final inventoryProvider = context.read<InventoryProviderV2>();
-
-    final int? productId = (alert['id'] ?? alert['product_id']) as int?;
-
-    Map<String, dynamic>? product;
-
-    if (productId != null) {
-      try {
-        product =
-            inventoryProvider.products.firstWhere((p) => p['id'] == productId);
-      } catch (_) {
-        product = null;
-      }
-    }
-
-    if (product == null) {
-      final name = alert['product_name'] as String?;
-      if (name != null) {
-        try {
-          product = inventoryProvider.products
-              .firstWhere((p) => (p['name'] ?? '') == name);
-        } catch (_) {}
-      }
-    }
-
-    product ??= {
-      'id': productId,
-      'name': alert['product_name'] ?? 'Product',
-      'price': 0.0,
-      'stock_quantity': alert['stock_quantity'] ?? 0,
-      'is_active': true,
+  /// Converts a Product object to Map and navigates to edit product screen
+  void _openProductFromAlert(Product alert) {
+    final productMap = {
+      'id': alert.id,
+      'name': alert.name,
+      'description': alert.description,
+      'sku': alert.sku,
+      'price': alert.price,
+      'stock_quantity': alert.stockQuantity,
+      'is_active': alert.isActive,
+      'store_id': alert.storeId,
     };
 
     // Close dialog then navigate to edit product screen
     Navigator.of(context).pop();
     Future.microtask(() => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => EditProductScreen(product: product!))));
+        builder: (_) => EditProductScreen(product: productMap))));
   }
 
-  /// Resolve a display name for a low-stock alert by preferring the live
-  /// product name (matched by id or exact name) and falling back to the
-  /// alert's provided name.
-  String _displayNameForAlert(Map<String, dynamic> alert) {
-    final inventoryProvider = context.read<InventoryProviderV2>();
-    final int? pid = (alert['id'] ?? alert['product_id']) as int?;
-
-    if (pid != null) {
-      try {
-        final p = inventoryProvider.products.firstWhere((p) => p['id'] == pid);
-        return p['name'] ?? alert['product_name'] ?? 'Product';
-      } catch (_) {}
-    }
-
-    final String? name = alert['product_name'] as String?;
-    if (name != null && name.isNotEmpty) {
-      // Try to match by name to prefer current product list name
-      try {
-        final p = inventoryProvider.products
-            .firstWhere((p) => (p['name'] ?? '') == name);
-        return p['name'] ?? name;
-      } catch (_) {}
-      return name;
-    }
-
-    return 'Product';
+  /// Return display name for a low-stock Product alert
+  String _displayNameForAlert(Product alert) {
+    return alert.name;
   }
 
   @override
   Widget build(BuildContext context) {
-    final inventoryProvider = Provider.of<InventoryProvider>(context);
+    final inventoryProvider = Provider.of<InventoryProviderV2>(context);
     final authProvider = Provider.of<AuthProvider>(context);
 
     if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
@@ -313,10 +266,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       onPressed: () =>
                           inventoryProvider.toggleShowInactiveProducts(),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, color: Colors.white),
-                      onPressed: _loadProducts,
-                    ),
+                    // V2: No refresh button needed - streams auto-update
+                    // IconButton(
+                    //   icon: const Icon(Icons.refresh, color: Colors.white),
+                    //   onPressed: _loadProducts,
+                    // ),
                     // IconButton(
                     //   icon: const Icon(Icons.cleaning_services,
                     //       color: Colors.white),
@@ -370,13 +324,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
         ),
       ),
-      body: inventoryProvider.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : inventoryProvider.errorMessage != null
-              ? Center(child: Text(inventoryProvider.errorMessage!))
-              : inventoryProvider.products.isEmpty
-                  ? const Center(child: Text('No products found'))
-                  : Column(
+      // V2: isLoading always false (local DB is instant), no need for loading spinner
+      body: inventoryProvider.errorMessage != null
+          ? Center(child: Text(inventoryProvider.errorMessage!))
+          : inventoryProvider.products.isEmpty
+              ? const Center(child: Text('No products found'))
+              : Column(
                       children: [
                         // Bulk action bar (visible when there are selections)
                         if (_selectedProductIds.isNotEmpty)
@@ -426,8 +379,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                           Builder(builder: (context) {
                                             final visibleIds = inventoryProvider
                                                 .products
-                                                .where((p) => p['id'] != null)
-                                                .map((p) => p['id'] as int)
+                                                .map((p) => p.id)
                                                 .toList();
                                             final allSelected =
                                                 visibleIds.isNotEmpty &&
@@ -466,16 +418,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                             final selectedProducts =
                                                 inventoryProvider.products
                                                     .where((p) =>
-                                                        p['id'] != null &&
                                                         _selectedProductIds
-                                                            .contains(p['id']))
+                                                            .contains(p.id))
                                                     .toList();
                                             final hasInactive =
                                                 selectedProducts.any((p) =>
-                                                    p['is_active'] != true);
+                                                    !p.isActive);
                                             final hasActive =
                                                 selectedProducts.any((p) =>
-                                                    p['is_active'] == true);
+                                                    p.isActive);
 
                                             IconData toggleIcon;
                                             Color? toggleColor;
@@ -592,17 +543,15 @@ class _InventoryScreenState extends State<InventoryScreen> {
                         ),
 
                         Expanded(
-                          child: RefreshIndicator(
-                            onRefresh: _loadProducts,
-                            child: Builder(builder: (context) {
-                              final displayedProducts = _searchQuery.isEmpty
-                                  ? inventoryProvider.products
-                                  : inventoryProvider.products
-                                      .where((p) => (p['name'] ?? '')
-                                          .toString()
-                                          .toLowerCase()
-                                          .contains(_searchQuery))
-                                      .toList();
+                          // V2: Streams handle reactivity, no need for RefreshIndicator
+                          child: Builder(builder: (context) {
+                            final displayedProducts = _searchQuery.isEmpty
+                                ? inventoryProvider.products
+                                : inventoryProvider.products
+                                    .where((p) => p.name
+                                        .toLowerCase()
+                                        .contains(_searchQuery))
+                                    .toList();
 
                               return ListView.builder(
                                 itemCount: displayedProducts.length + 1,
@@ -638,7 +587,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                                               a)),
                                                                       subtitle:
                                                                           Text(
-                                                                              'Stock: ${a['stock_quantity'] ?? 0}'),
+                                                                              'Stock: ${a.stockQuantity}'),
                                                                       onTap: () =>
                                                                           _openProductFromAlert(
                                                                               a),
@@ -653,32 +602,28 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                   }
 
                                   final product = displayedProducts[index - 1];
-                                  final id = product['id'] as int?;
-                                  final isSelected = id != null &&
-                                      _selectedProductIds.contains(id);
-                                  final isActive = product['is_active'] ?? true;
+                                  final id = product.id;
+                                  final isSelected = _selectedProductIds.contains(id);
+                                  final isActive = product.isActive;
 
                                   return Card(
                                     margin: const EdgeInsets.symmetric(
                                         horizontal: 16, vertical: 8),
                                     child: InkWell(
                                       // Long-press toggles selection for this product (adds or removes it)
-                                      onLongPress: id == null
-                                          ? null
-                                          : () {
-                                              setState(() {
-                                                if (_selectedProductIds
-                                                    .contains(id)) {
-                                                  _selectedProductIds
-                                                      .remove(id);
-                                                } else {
-                                                  _selectedProductIds.add(id);
-                                                }
-                                              });
-                                            },
+                                      onLongPress: () {
+                                        setState(() {
+                                          if (_selectedProductIds
+                                              .contains(id)) {
+                                            _selectedProductIds
+                                                .remove(id);
+                                          } else {
+                                            _selectedProductIds.add(id);
+                                          }
+                                        });
+                                      },
                                       onTap: () {
-                                        if (_selectedProductIds.isNotEmpty &&
-                                            id != null) {
+                                        if (_selectedProductIds.isNotEmpty) {
                                           setState(() {
                                             if (isSelected) {
                                               _selectedProductIds.remove(id);
@@ -699,9 +644,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                             SizedBox(
                                               width: 25,
                                               height: 25,
-                                              child: (id == null ||
-                                                      _selectedProductIds
-                                                          .isEmpty)
+                                              child: _selectedProductIds
+                                                      .isEmpty
                                                   ? CircleAvatar(
                                                       backgroundColor:
                                                           const Color.fromARGB(
@@ -709,8 +653,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                       foregroundColor:
                                                           Colors.white,
                                                       child: Text(
-                                                          (product['name'] ??
-                                                              'P')[0]),
+                                                          product.name[0]),
                                                     )
                                                   : Checkbox(
                                                       value: isSelected,
@@ -736,8 +679,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                     CrossAxisAlignment.start,
                                                 children: [
                                                   Text(
-                                                    product['name'] ??
-                                                        'Unknown',
+                                                    product.name,
                                                     maxLines: 1,
                                                     overflow:
                                                         TextOverflow.ellipsis,
@@ -752,16 +694,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                   ),
                                                   const SizedBox(height: 4),
                                                   Text(
-                                                    'Stock: ${product['stock_quantity'] ?? 0}',
+                                                    'Stock: ${product.stockQuantity}',
                                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                        color: (product['id'] !=
-                                                                    null &&
-                                                                inventoryProvider
-                                                                    .lowStockAlerts
-                                                                    .any((a) =>
-                                                                        a['id'] ==
-                                                                        product[
-                                                                            'id']))
+                                                        color: inventoryProvider
+                                                                .lowStockAlerts
+                                                                .any((a) =>
+                                                                    a.id ==
+                                                                    product.id)
                                                             ? Colors.red
                                                             : AppColors
                                                                 .primaryAction),
@@ -783,7 +722,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                     alignment:
                                                         Alignment.centerRight,
                                                     child: Text(
-                                                      '\$${(product['price'] ?? 0).toStringAsFixed(2)}',
+                                                      '\$${product.price.toStringAsFixed(2)}',
                                                       style: Theme.of(context)
                                                           .textTheme
                                                           .bodyMedium
@@ -817,8 +756,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                               try {
                                                                 await inventoryProvider
                                                                     .updateProductStatus(
-                                                                        product[
-                                                                            'id'],
+                                                                        product.id,
                                                                         !isActive);
                                                                 if (context
                                                                     .mounted) {
@@ -850,13 +788,23 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                   ),
                                                   onSelected: (value) {
                                                     if (value == 'edit') {
+                                                      final productMap = {
+                                                        'id': product.id,
+                                                        'name': product.name,
+                                                        'description': product.description,
+                                                        'sku': product.sku,
+                                                        'price': product.price,
+                                                        'stock_quantity': product.stockQuantity,
+                                                        'is_active': product.isActive,
+                                                        'store_id': product.storeId,
+                                                      };
                                                       Navigator.of(context)
                                                           .push(
                                                         MaterialPageRoute(
                                                           builder: (_) =>
                                                               EditProductScreen(
                                                                   product:
-                                                                      product),
+                                                                      productMap),
                                                         ),
                                                       );
                                                     } else if (value ==
@@ -886,8 +834,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                 },
                               );
                             }),
-                          ),
-                        )
+                        ),
                       ],
                     ),
       bottomNavigationBar: const AppBottomNav(currentRoute: '/inventory'),

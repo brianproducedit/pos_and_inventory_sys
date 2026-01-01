@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:mobile/services/auth_service.dart';
+import 'package:mobile/services/auth_service.dart' as auth_service;
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/services/error_mapper.dart';
@@ -76,7 +76,7 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       String friendly;
       try {
         friendly = ErrorMapper.friendlyMessage(
-            e is Map ? e : (e is AuthException ? e : e.toString()));
+            e is Map ? e : (e is auth_service.AuthException ? e : e.toString()));
       } catch (mapperError) {
         debugPrint('Error in ErrorMapper: $mapperError');
         // Fallback to a generic message
@@ -92,7 +92,7 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       // If server reports invalid credentials, clear and focus password field for quick retry
       dynamic errObj;
       if (e is Map) errObj = e;
-      if (e is AuthException) errObj = e.toMap();
+      if (e is auth_service.AuthException) errObj = e.toMap();
 
       if (mounted && errObj is Map) {
         final code = errObj['code'];

@@ -55,6 +55,11 @@ class Users extends Table {
   DateTimeColumn get lastUpdatedAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>>? get uniqueKeys => [
+        {username}, // Unique username constraint
+      ];
 }
 
 class Stores extends Table {
@@ -94,6 +99,11 @@ class Products extends Table {
   DateTimeColumn get lastUpdatedAt =>
       dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  List<Set<Column>>? get uniqueKeys => [
+        {sku}, // Unique SKU constraint (when not null)
+      ];
 }
 
 class Sales extends Table {
@@ -220,6 +230,8 @@ class AppDatabase extends _$AppDatabase {
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) async {
           await m.createAll();
+          // Create indexes for performance
+          await _createPerformanceIndexes(m);
         },
         onUpgrade: (m, from, to) async {
           if (from == 1 && to == 2) {
@@ -332,6 +344,65 @@ class AppDatabase extends _$AppDatabase {
     // The constructor uses a LazyDatabase which resolves the actual file path
     // lazily, so constructing the DB instance is safe here.
     return AppDatabase();
+  }
+
+  /// Create performance indexes for common query patterns
+  Future<void> _createPerformanceIndexes(Migrator m) async {
+    // Users table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_users_store_id ON users(store_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_users_sync_status ON users(sync_status)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_users_server_id ON users(server_id)');
+
+    // Products table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_name ON products(name)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_store_id ON products(store_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_sync_status ON products(sync_status)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_active_store ON products(is_active, store_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_products_stock ON products(stock_quantity)');
+
+    // Sales table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sales_transaction_number ON sales(transaction_number)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sales_user_id ON sales(user_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sales_store_id ON sales(store_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sales_created_at ON sales(created_at DESC)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sales_sync_status ON sales(sync_status)');
+
+    // Sale Items table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_sale_id ON sale_items(sale_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sale_items_product_id ON sale_items(product_id)');
+
+    // Sync Queue table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sync_queue_status ON sync_queue(status)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sync_queue_resource ON sync_queue(resource_type, entity_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_sync_queue_created_at ON sync_queue(created_at)');
+
+    // Inventory Logs table indexes
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_inventory_logs_product_id ON inventory_logs(product_id)');
+    await m.issueCustomQuery(
+        'CREATE INDEX IF NOT EXISTS idx_inventory_logs_created_at ON inventory_logs(created_at DESC)');
   }
 }
 

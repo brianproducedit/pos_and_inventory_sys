@@ -224,7 +224,7 @@ class SyncStatistics {
     final conflictingUsers = await (db.select(db.users)
           ..where((u) => u.syncStatus.equals('conflict')))
         .get();
-    
+
     final conflictingProducts = await (db.select(db.products)
           ..where((p) => p.syncStatus.equals('conflict')))
         .get();
@@ -245,7 +245,7 @@ class SyncStatistics {
       pendingCount: pending.length,
       failedCount: failed.length,
       conflictCount: conflictCount,
-      lastSuccessfulSync: lastSuccessMeta?.value != null 
+      lastSuccessfulSync: lastSuccessMeta?.value != null
           ? DateTime.tryParse(lastSuccessMeta!.value!)
           : null,
       lastAttemptedSync: lastAttemptMeta?.value != null

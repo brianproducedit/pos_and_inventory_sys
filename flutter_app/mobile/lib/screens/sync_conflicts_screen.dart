@@ -339,7 +339,8 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
     }
   }
 
-  Future<void> _applyResolution(conflict_model.ConflictResolutionResult result) async {
+  Future<void> _applyResolution(
+      conflict_model.ConflictResolutionResult result) async {
     // This would call the appropriate repository method to apply the resolution
     // For now, just update sync status in database
     final db = widget.syncWorker.db;

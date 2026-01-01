@@ -94,7 +94,7 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
     }
 
     // Use case-insensitive check to be resilient to role string variations
-    if ((authProvider.role ?? '').toLowerCase() != 'superadmin') {
+    if ((authProvider.role?.toString() ?? '').toLowerCase() != 'superadmin') {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(

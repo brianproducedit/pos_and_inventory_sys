@@ -218,7 +218,7 @@ class BluetoothPrinterService extends ChangeNotifier {
     try {
       // Generate ESC/POS commands
       // final commands = receipt.toEscPosCommands();
-      
+
       // TODO: Send commands to printer
       // Example with blue_thermal_printer:
       // await BlueThermalPrinter.instance.writeBytes(receipt.toEscPosCommands());

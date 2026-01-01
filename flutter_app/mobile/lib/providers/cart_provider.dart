@@ -282,7 +282,9 @@ class CartProvider with ChangeNotifier {
 
         final product = await productRepository.getById(productId);
 
-        if (product != null && product.isActive && product.stockQuantity >= quantity) {
+        if (product != null &&
+            product.isActive &&
+            product.stockQuantity >= quantity) {
           _items.add(CartItem(product: product, quantity: quantity));
         }
       } catch (e) {

@@ -18,8 +18,8 @@ class SyncWorker {
     required this.apiClient,
     FlutterSecureStorage? storage,
     models.ConflictManager? conflictManager,
-  }) : secureStorage = storage ?? const FlutterSecureStorage(),
-       conflictManager = conflictManager ?? models.ConflictManager();
+  })  : secureStorage = storage ?? const FlutterSecureStorage(),
+        conflictManager = conflictManager ?? models.ConflictManager();
 
   /// Trigger a sync operation
   Future<void> triggerSync() async {
@@ -140,13 +140,15 @@ class SyncWorker {
   }
 
   /// Apply user change from server
-  Future<void> _applyUserChange(String operation, Map<String, dynamic> data) async {
+  Future<void> _applyUserChange(
+      String operation, Map<String, dynamic> data) async {
     final serverId = data['id'] as int?;
     if (serverId == null) return;
 
     if (operation == 'delete') {
       // Delete user by server ID
-      await (db.delete(db.users)..where((u) => u.serverId.equals(serverId))).go();
+      await (db.delete(db.users)..where((u) => u.serverId.equals(serverId)))
+          .go();
       return;
     }
 
@@ -155,13 +157,15 @@ class SyncWorker {
           ..where((u) => u.serverId.equals(serverId)))
         .getSingleOrNull();
 
-    final serverUpdatedAt = DateTime.tryParse(data['updated_at'] as String? ?? '');
+    final serverUpdatedAt =
+        DateTime.tryParse(data['updated_at'] as String? ?? '');
 
     if (existingUser != null) {
       // Check for conflicts
       if (existingUser.syncStatus == SyncStatus.pending) {
-        print('SyncWorker: Conflict detected for user $serverId - local changes pending');
-        
+        print(
+            'SyncWorker: Conflict detected for user $serverId - local changes pending');
+
         // Create conflict record for manual resolution
         final conflict = models.SyncConflict(
           resourceType: 'user',
@@ -180,9 +184,9 @@ class SyncWorker {
           serverUpdatedAt: serverUpdatedAt ?? DateTime.now(),
           detectedAt: DateTime.now(),
         );
-        
+
         conflictManager.addConflict(conflict);
-        
+
         // Mark as conflict in database
         await (db.update(db.users)..where((u) => u.id.equals(existingUser.id)))
             .write(UsersCompanion(
@@ -192,7 +196,7 @@ class SyncWorker {
       }
 
       // Update existing user if server version is newer
-      if (serverUpdatedAt != null && 
+      if (serverUpdatedAt != null &&
           serverUpdatedAt.isAfter(existingUser.lastUpdatedAt)) {
         await (db.update(db.users)..where((u) => u.id.equals(existingUser.id)))
             .write(UsersCompanion(
@@ -201,8 +205,8 @@ class SyncWorker {
           role: Value(_parseUserRole(data['role'] as String)),
           storeId: Value(data['store_id'] as int?),
           isActive: Value(data['is_active'] as bool? ?? true),
-          passwordHash: data['password_hash'] != null 
-              ? Value(data['password_hash'] as String) 
+          passwordHash: data['password_hash'] != null
+              ? Value(data['password_hash'] as String)
               : Value.absent(),
           syncStatus: Value(SyncStatus.synced),
           lastUpdatedAt: Value(serverUpdatedAt),
@@ -229,12 +233,14 @@ class SyncWorker {
   }
 
   /// Apply product change from server
-  Future<void> _applyProductChange(String operation, Map<String, dynamic> data) async {
+  Future<void> _applyProductChange(
+      String operation, Map<String, dynamic> data) async {
     final serverId = data['id'] as int?;
     if (serverId == null) return;
 
     if (operation == 'delete') {
-      await (db.delete(db.products)..where((p) => p.serverId.equals(serverId))).go();
+      await (db.delete(db.products)..where((p) => p.serverId.equals(serverId)))
+          .go();
       return;
     }
 
@@ -242,12 +248,13 @@ class SyncWorker {
           ..where((p) => p.serverId.equals(serverId)))
         .getSingleOrNull();
 
-    final serverUpdatedAt = DateTime.tryParse(data['updated_at'] as String? ?? '');
+    final serverUpdatedAt =
+        DateTime.tryParse(data['updated_at'] as String? ?? '');
 
     if (existingProduct != null) {
       if (existingProduct.syncStatus == SyncStatus.pending) {
         print('SyncWorker: Conflict detected for product $serverId');
-        
+
         // Create conflict record
         final conflict = models.SyncConflict(
           resourceType: 'product',
@@ -266,17 +273,19 @@ class SyncWorker {
           serverUpdatedAt: serverUpdatedAt ?? DateTime.now(),
           detectedAt: DateTime.now(),
         );
-        
+
         conflictManager.addConflict(conflict);
-        
-        await (db.update(db.products)..where((p) => p.id.equals(existingProduct.id)))
+
+        await (db.update(db.products)
+              ..where((p) => p.id.equals(existingProduct.id)))
             .write(ProductsCompanion(syncStatus: Value(SyncStatus.conflict)));
         return;
       }
 
-      if (serverUpdatedAt != null && 
+      if (serverUpdatedAt != null &&
           serverUpdatedAt.isAfter(existingProduct.lastUpdatedAt)) {
-        await (db.update(db.products)..where((p) => p.id.equals(existingProduct.id)))
+        await (db.update(db.products)
+              ..where((p) => p.id.equals(existingProduct.id)))
             .write(ProductsCompanion(
           name: Value(data['name'] as String),
           sku: Value(data['sku'] as String?),
@@ -306,12 +315,14 @@ class SyncWorker {
   }
 
   /// Apply sale change from server
-  Future<void> _applySaleChange(String operation, Map<String, dynamic> data) async {
+  Future<void> _applySaleChange(
+      String operation, Map<String, dynamic> data) async {
     final serverId = data['id'] as int?;
     if (serverId == null) return;
 
     if (operation == 'delete') {
-      await (db.delete(db.sales)..where((s) => s.serverId.equals(serverId))).go();
+      await (db.delete(db.sales)..where((s) => s.serverId.equals(serverId)))
+          .go();
       return;
     }
 
@@ -321,8 +332,10 @@ class SyncWorker {
 
     if (existingSale == null) {
       // Insert new sale from server
-      final serverUpdatedAt = DateTime.tryParse(data['updated_at'] as String? ?? '') ?? DateTime.now();
-      
+      final serverUpdatedAt =
+          DateTime.tryParse(data['updated_at'] as String? ?? '') ??
+              DateTime.now();
+
       await db.into(db.sales).insert(
             SalesCompanion.insert(
               serverId: Value(serverId),
@@ -340,12 +353,14 @@ class SyncWorker {
   }
 
   /// Apply store change from server
-  Future<void> _applyStoreChange(String operation, Map<String, dynamic> data) async {
+  Future<void> _applyStoreChange(
+      String operation, Map<String, dynamic> data) async {
     final serverId = data['id'] as int?;
     if (serverId == null) return;
 
     if (operation == 'delete') {
-      await (db.delete(db.stores)..where((s) => s.serverId.equals(serverId))).go();
+      await (db.delete(db.stores)..where((s) => s.serverId.equals(serverId)))
+          .go();
       return;
     }
 
@@ -353,12 +368,14 @@ class SyncWorker {
           ..where((s) => s.serverId.equals(serverId)))
         .getSingleOrNull();
 
-    final serverUpdatedAt = DateTime.tryParse(data['updated_at'] as String? ?? '');
+    final serverUpdatedAt =
+        DateTime.tryParse(data['updated_at'] as String? ?? '');
 
     if (existingStore != null) {
-      if (serverUpdatedAt != null && 
+      if (serverUpdatedAt != null &&
           serverUpdatedAt.isAfter(existingStore.lastUpdatedAt)) {
-        await (db.update(db.stores)..where((s) => s.id.equals(existingStore.id)))
+        await (db.update(db.stores)
+              ..where((s) => s.id.equals(existingStore.id)))
             .write(StoresCompanion(
           name: Value(data['name'] as String),
           location: Value(data['location'] as String?),
@@ -386,7 +403,7 @@ class SyncWorker {
   Future<void> _pushChanges() async {
     // Get pending items from sync queue, respecting exponential backoff
     final now = DateTime.now();
-    
+
     // Get all pending items
     final allPendingItems = await (db.select(db.syncQueue)
           ..where((q) => q.status.equals('pending'))
@@ -603,7 +620,8 @@ class SyncWorker {
               lastUpdatedAt: Value(DateTime.now()),
             ));
 
-            print('SyncWorker: Product created on server, id: ${serverProduct['id']}');
+            print(
+                'SyncWorker: Product created on server, id: ${serverProduct['id']}');
           } catch (e) {
             print('SyncWorker: Failed to create product on server: $e');
             rethrow;
@@ -672,8 +690,7 @@ class SyncWorker {
             );
 
             // Update sale with server ID
-            await (db.update(db.sales)
-                  ..where((s) => s.id.equals(localSale.id)))
+            await (db.update(db.sales)..where((s) => s.id.equals(localSale.id)))
                 .write(SalesCompanion(
               serverId: Value(serverSale['id'] as int),
               syncStatus: Value(SyncStatus.synced),
@@ -693,7 +710,8 @@ class SyncWorker {
               ));
             }
 
-            print('SyncWorker: Sale created on server, id: ${serverSale['id']}');
+            print(
+                'SyncWorker: Sale created on server, id: ${serverSale['id']}');
           } catch (e) {
             print('SyncWorker: Failed to create sale on server: $e');
             rethrow;

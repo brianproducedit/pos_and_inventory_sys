@@ -3,23 +3,23 @@ import 'package:drift/drift.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../db/app_database.dart';
 import '../data/remote/api_client.dart';
-import '../models/sync_conflict.dart';
+import '../models/sync_conflict.dart' as models;
 
 /// Background sync worker - handles pushing and pulling changes
 class SyncWorker {
   final AppDatabase db;
   final ApiClient apiClient;
   final FlutterSecureStorage secureStorage;
-  final ConflictManager conflictManager;
+  final models.ConflictManager conflictManager;
   bool _isSyncing = false;
 
   SyncWorker({
     required this.db,
     required this.apiClient,
     FlutterSecureStorage? storage,
-    ConflictManager? conflictManager,
+    models.ConflictManager? conflictManager,
   }) : secureStorage = storage ?? const FlutterSecureStorage(),
-       conflictManager = conflictManager ?? ConflictManager();
+       conflictManager = conflictManager ?? models.ConflictManager();
 
   /// Trigger a sync operation
   Future<void> triggerSync() async {
@@ -63,8 +63,8 @@ class SyncWorker {
           .getSingleOrNull();
 
       DateTime? lastSyncTime;
-      if (lastSyncMeta != null) {
-        lastSyncTime = DateTime.parse(lastSyncMeta.value);
+      if (lastSyncMeta != null && lastSyncMeta.value != null) {
+        lastSyncTime = DateTime.parse(lastSyncMeta.value!);
       }
 
       // Fetch changes from server
@@ -92,7 +92,7 @@ class SyncWorker {
       await db.into(db.syncMeta).insertOnConflictUpdate(
             SyncMetaCompanion.insert(
               key: 'last_pull_sync',
-              value: now.toIso8601String(),
+              value: Value(now.toIso8601String()),
             ),
           );
 
@@ -163,7 +163,7 @@ class SyncWorker {
         print('SyncWorker: Conflict detected for user $serverId - local changes pending');
         
         // Create conflict record for manual resolution
-        final conflict = SyncConflict(
+        final conflict = models.SyncConflict(
           resourceType: 'user',
           localId: existingUser.id,
           serverId: serverId,
@@ -198,7 +198,7 @@ class SyncWorker {
             .write(UsersCompanion(
           username: Value(data['username'] as String),
           fullName: Value(data['full_name'] as String? ?? ''),
-          role: Value(data['role'] as String),
+          role: Value(_parseUserRole(data['role'] as String)),
           storeId: Value(data['store_id'] as int?),
           isActive: Value(data['is_active'] as bool? ?? true),
           passwordHash: data['password_hash'] != null 
@@ -213,16 +213,16 @@ class SyncWorker {
       await db.into(db.users).insert(
             UsersCompanion.insert(
               serverId: Value(serverId),
-              clientId: data['client_id'] as String? ?? '',
+              clientId: Value(data['client_id'] as String? ?? ''),
               username: data['username'] as String,
-              fullName: data['full_name'] as String? ?? '',
-              role: data['role'] as String,
+              fullName: Value(data['full_name'] as String?),
+              role: _parseUserRole(data['role'] as String),
               storeId: Value(data['store_id'] as int?),
-              isActive: data['is_active'] as bool? ?? true,
+              isActive: Value(data['is_active'] as bool? ?? true),
               passwordHash: data['password_hash'] as String? ?? '',
-              syncStatus: SyncStatus.synced,
-              isLocalOnly: false,
-              lastUpdatedAt: serverUpdatedAt ?? DateTime.now(),
+              syncStatus: Value(SyncStatus.synced),
+              isLocalOnly: Value(false),
+              lastUpdatedAt: Value(serverUpdatedAt ?? DateTime.now()),
             ),
           );
     }
@@ -249,7 +249,7 @@ class SyncWorker {
         print('SyncWorker: Conflict detected for product $serverId');
         
         // Create conflict record
-        final conflict = SyncConflict(
+        final conflict = models.SyncConflict(
           resourceType: 'product',
           localId: existingProduct.id,
           serverId: serverId,
@@ -257,11 +257,9 @@ class SyncWorker {
           localData: {
             'name': existingProduct.name,
             'sku': existingProduct.sku,
-            'barcode': existingProduct.barcode,
-            'category': existingProduct.category,
+            'description': existingProduct.description,
             'price': existingProduct.price,
-            'cost': existingProduct.cost,
-            'quantity': existingProduct.quantity,
+            'stock_quantity': existingProduct.stockQuantity,
           },
           serverData: data,
           localUpdatedAt: existingProduct.lastUpdatedAt,
@@ -281,13 +279,10 @@ class SyncWorker {
         await (db.update(db.products)..where((p) => p.id.equals(existingProduct.id)))
             .write(ProductsCompanion(
           name: Value(data['name'] as String),
-          sku: Value(data['sku'] as String? ?? ''),
-          barcode: Value(data['barcode'] as String?),
-          category: Value(data['category'] as String?),
+          sku: Value(data['sku'] as String?),
+          description: Value(data['description'] as String?),
           price: Value(data['price'] as double? ?? 0.0),
-          cost: Value(data['cost'] as double?),
-          quantity: Value(data['quantity'] as int? ?? 0),
-          lowStockThreshold: Value(data['low_stock_threshold'] as int?),
+          stockQuantity: Value(data['stock_quantity'] as int? ?? 0),
           syncStatus: Value(SyncStatus.synced),
           lastUpdatedAt: Value(serverUpdatedAt),
         ));
@@ -296,18 +291,15 @@ class SyncWorker {
       await db.into(db.products).insert(
             ProductsCompanion.insert(
               serverId: Value(serverId),
-              clientId: data['client_id'] as String? ?? '',
+              clientId: Value(data['client_id'] as String? ?? ''),
               name: data['name'] as String,
-              sku: data['sku'] as String? ?? '',
-              barcode: Value(data['barcode'] as String?),
-              category: Value(data['category'] as String?),
-              price: data['price'] as double? ?? 0.0,
-              cost: Value(data['cost'] as double?),
-              quantity: data['quantity'] as int? ?? 0,
-              lowStockThreshold: Value(data['low_stock_threshold'] as int?),
-              storeId: Value(data['store_id'] as int?),
-              syncStatus: SyncStatus.synced,
-              lastUpdatedAt: serverUpdatedAt ?? DateTime.now(),
+              sku: Value(data['sku'] as String?),
+              description: Value(data['description'] as String?),
+              price: Value(data['price'] as double? ?? 0.0),
+              stockQuantity: Value(data['stock_quantity'] as int? ?? 0),
+              storeId: data['store_id'] as int,
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(serverUpdatedAt ?? DateTime.now()),
             ),
           );
     }
@@ -334,13 +326,14 @@ class SyncWorker {
       await db.into(db.sales).insert(
             SalesCompanion.insert(
               serverId: Value(serverId),
-              clientId: data['client_id'] as String? ?? '',
+              clientId: Value(data['client_id'] as String? ?? ''),
+              transactionNumber: data['transaction_number'] as String,
               totalAmount: data['total_amount'] as double? ?? 0.0,
               paymentMethod: data['payment_method'] as String? ?? 'cash',
-              userId: Value(data['user_id'] as int?),
-              storeId: Value(data['store_id'] as int?),
-              syncStatus: SyncStatus.synced,
-              lastUpdatedAt: serverUpdatedAt,
+              userId: data['user_id'] as int,
+              storeId: data['store_id'] as int,
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(serverUpdatedAt),
             ),
           );
     }
@@ -368,7 +361,7 @@ class SyncWorker {
         await (db.update(db.stores)..where((s) => s.id.equals(existingStore.id)))
             .write(StoresCompanion(
           name: Value(data['name'] as String),
-          address: Value(data['address'] as String?),
+          location: Value(data['location'] as String?),
           isActive: Value(data['is_active'] as bool? ?? true),
           syncStatus: Value(SyncStatus.synced),
           lastUpdatedAt: Value(serverUpdatedAt),
@@ -378,12 +371,12 @@ class SyncWorker {
       await db.into(db.stores).insert(
             StoresCompanion.insert(
               serverId: Value(serverId),
-              clientId: data['client_id'] as String? ?? '',
+              clientId: Value(data['client_id'] as String? ?? ''),
               name: data['name'] as String,
-              address: Value(data['address'] as String?),
-              isActive: data['is_active'] as bool? ?? true,
-              syncStatus: SyncStatus.synced,
-              lastUpdatedAt: serverUpdatedAt ?? DateTime.now(),
+              location: Value(data['location'] as String?),
+              isActive: Value(data['is_active'] as bool? ?? true),
+              syncStatus: Value(SyncStatus.synced),
+              lastUpdatedAt: Value(serverUpdatedAt ?? DateTime.now()),
             ),
           );
     }
@@ -415,7 +408,7 @@ class SyncWorker {
           .getSingleOrNull();
 
       if (retryMeta != null) {
-        final nextRetryTime = DateTime.parse(retryMeta.value);
+        final nextRetryTime = DateTime.parse(retryMeta.value!);
         if (now.isBefore(nextRetryTime)) {
           // Still in backoff period, skip for now
           print('SyncWorker: Item ${item.id} in backoff, skipping until '
@@ -748,15 +741,12 @@ class SyncWorker {
       await db.into(db.syncMeta).insertOnConflictUpdate(
             SyncMetaCompanion.insert(
               key: 'next_retry_${item.id}',
-              value: nextRetryAt.toIso8601String(),
+              value: Value(nextRetryAt.toIso8601String()),
             ),
           );
 
       print('SyncWorker: Item ${item.id} will retry in ${delaySeconds}s '
           '(attempt $newRetryCount of $maxRetries, error: $error)');
-    }
-  }
-          '${newRetryCount} attempts');
     }
   }
 
@@ -808,4 +798,16 @@ class SyncQueueStatus {
   bool get hasFailures => failedCount > 0;
   bool get isSyncing => processingCount > 0;
   int get totalUnsynced => pendingCount + failedCount;
+}
+
+/// Helper function to parse UserRole from string
+UserRole _parseUserRole(String role) {
+  switch (role.toLowerCase()) {
+    case 'admin':
+      return UserRole.admin;
+    case 'cashier':
+      return UserRole.cashier;
+    default:
+      return UserRole.cashier; // Default to cashier for unknown roles
+  }
 }

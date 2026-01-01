@@ -69,7 +69,7 @@ class SyncConflict {
   /// Get list of conflicting fields
   List<String> getConflictingFields() {
     final conflicts = <String>[];
-    
+
     for (final key in localData.keys) {
       if (serverData.containsKey(key)) {
         if (localData[key] != serverData[key]) {
@@ -77,7 +77,7 @@ class SyncConflict {
         }
       }
     }
-    
+
     return conflicts;
   }
 
@@ -85,7 +85,7 @@ class SyncConflict {
   String getFieldSummary(String fieldName) {
     final localValue = localData[fieldName];
     final serverValue = serverData[fieldName];
-    
+
     return 'Local: ${_formatValue(localValue)} → Server: ${_formatValue(serverValue)}';
   }
 
@@ -99,10 +99,10 @@ class SyncConflict {
 
 /// Conflict resolution strategy
 enum ConflictResolution {
-  useLocal,     // Keep local changes, discard server changes
-  useServer,    // Discard local changes, use server changes
-  merge,        // Merge both changes (manual field selection)
-  skip,         // Skip for now, resolve later
+  useLocal, // Keep local changes, discard server changes
+  useServer, // Discard local changes, use server changes
+  merge, // Merge both changes (manual field selection)
+  skip, // Skip for now, resolve later
 }
 
 /// Result of conflict resolution
@@ -163,10 +163,9 @@ class ConflictManager {
 
   /// Remove a resolved conflict
   void removeConflict(SyncConflict conflict) {
-    _conflicts.removeWhere((c) => 
-      c.resourceType == conflict.resourceType && 
-      c.localId == conflict.localId
-    );
+    _conflicts.removeWhere((c) =>
+        c.resourceType == conflict.resourceType &&
+        c.localId == conflict.localId);
   }
 
   /// Clear all conflicts
@@ -175,7 +174,8 @@ class ConflictManager {
   }
 
   /// Get conflicts requiring immediate attention (older than threshold)
-  List<SyncConflict> getUrgentConflicts({Duration threshold = const Duration(hours: 24)}) {
+  List<SyncConflict> getUrgentConflicts(
+      {Duration threshold = const Duration(hours: 24)}) {
     final now = DateTime.now();
     return _conflicts.where((c) {
       final age = now.difference(c.detectedAt);

@@ -67,12 +67,13 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
               children: [
                 // Connection status
                 _buildConnectionBanner(),
-                
+
                 const SizedBox(height: 16),
 
                 // Pending jobs
                 if (pendingJobs.isNotEmpty) ...[
-                  _buildSectionHeader('Pending', pendingJobs.length, Colors.blue),
+                  _buildSectionHeader(
+                      'Pending', pendingJobs.length, Colors.blue),
                   ...pendingJobs.map((job) => _buildJobCard(job)),
                   const SizedBox(height: 16),
                 ],
@@ -86,7 +87,8 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
 
                 // Completed jobs
                 if (completedJobs.isNotEmpty) ...[
-                  _buildSectionHeader('Completed', completedJobs.length, Colors.green),
+                  _buildSectionHeader(
+                      'Completed', completedJobs.length, Colors.green),
                   ...completedJobs.map((job) => _buildJobCard(job)),
                 ],
               ],
@@ -190,7 +192,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
               '$title ($count)',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: color.shade700,
+                color: Color.alphaBlend(Colors.black.withOpacity(0.3), color),
               ),
             ),
           ),
@@ -201,7 +203,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
 
   Widget _buildJobCard(PrintJob job) {
     final dateFormat = DateFormat('MMM d, h:mm a');
-    
+
     Color statusColor;
     IconData statusIcon;
     String statusText;
@@ -279,7 +281,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
             const SizedBox(height: 12),
             const Divider(),
             const SizedBox(height: 8),
-            
+
             // Receipt details
             Row(
               children: [
@@ -307,9 +309,9 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 8),
-            
+
             // Timestamps
             Row(
               children: [
@@ -324,7 +326,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
                 ),
               ],
             ),
-            
+
             if (job.printedAt != null) ...[
               const SizedBox(height: 4),
               Row(
@@ -341,7 +343,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
                 ],
               ),
             ],
-            
+
             // Error message
             if (job.errorMessage != null) ...[
               const SizedBox(height: 8),
@@ -368,7 +370,7 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
                 ),
               ),
             ],
-            
+
             // Retry count
             if (job.retryCount > 0)
               Padding(

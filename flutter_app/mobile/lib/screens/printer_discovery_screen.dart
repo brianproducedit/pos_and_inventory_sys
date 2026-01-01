@@ -241,8 +241,10 @@ class _PrinterDiscoveryScreenState extends State<PrinterDiscoveryScreen> {
   }
 
   Widget _buildPrinterCard(BluetoothPrinter printer) {
-    final isConnected = widget.printerService.connectedPrinter?.address == printer.address;
-    final isConnecting = widget.printerService.connectionStatus == PrinterConnectionStatus.connecting;
+    final isConnected =
+        widget.printerService.connectedPrinter?.address == printer.address;
+    final isConnecting = widget.printerService.connectionStatus ==
+        PrinterConnectionStatus.connecting;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -332,7 +334,8 @@ class _PrinterDiscoveryScreenState extends State<PrinterDiscoveryScreen> {
               ),
               const SizedBox(height: 12),
               _buildHelpStep('1', 'Turn on your Bluetooth thermal printer'),
-              _buildHelpStep('2', 'Enable pairing mode (usually a button or power on)'),
+              _buildHelpStep(
+                  '2', 'Enable pairing mode (usually a button or power on)'),
               _buildHelpStep('3', 'Tap "Scan Again" to search for printers'),
               _buildHelpStep('4', 'Select your printer from the list'),
               _buildHelpStep('5', 'Wait for connection to complete'),

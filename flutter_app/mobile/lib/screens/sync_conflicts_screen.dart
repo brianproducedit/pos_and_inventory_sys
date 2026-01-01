@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import '../models/sync_conflict.dart';
+import 'package:drift/drift.dart' as drift;
+import '../models/sync_conflict.dart' as conflict_model;
 import '../services/sync_worker.dart';
+import '../db/app_database.dart';
 
 /// Screen for viewing and resolving sync conflicts
 class SyncConflictsScreen extends StatefulWidget {
-  final ConflictManager conflictManager;
+  final conflict_model.ConflictManager conflictManager;
   final SyncWorker syncWorker;
 
   const SyncConflictsScreen({
@@ -76,7 +78,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
     );
   }
 
-  Widget _buildConflictCard(SyncConflict conflict) {
+  Widget _buildConflictCard(conflict_model.SyncConflict conflict) {
     final conflictingFields = conflict.getConflictingFields();
     final isUrgent = DateTime.now().difference(conflict.detectedAt) >
         const Duration(hours: 24);
@@ -148,7 +150,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
   }
 
   Widget _buildConflictDetails(
-      SyncConflict conflict, List<String> conflictingFields) {
+      conflict_model.SyncConflict conflict, List<String> conflictingFields) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -196,7 +198,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
     );
   }
 
-  Widget _buildResolutionButtons(SyncConflict conflict) {
+  Widget _buildResolutionButtons(conflict_model.SyncConflict conflict) {
     return Column(
       children: [
         const Divider(),
@@ -217,7 +219,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                     ? null
                     : () => _resolveConflict(
                           conflict,
-                          ConflictResolution.useLocal,
+                          conflict_model.ConflictResolution.useLocal,
                         ),
                 icon: const Icon(Icons.phone_android),
                 label: const Text('Use Local'),
@@ -234,7 +236,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                     ? null
                     : () => _resolveConflict(
                           conflict,
-                          ConflictResolution.useServer,
+                          conflict_model.ConflictResolution.useServer,
                         ),
                 icon: const Icon(Icons.cloud),
                 label: const Text('Use Server'),
@@ -255,7 +257,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                     ? null
                     : () => _resolveConflict(
                           conflict,
-                          ConflictResolution.merge,
+                          conflict_model.ConflictResolution.merge,
                         ),
                 icon: const Icon(Icons.merge_type),
                 label: const Text('Merge (Manual)'),
@@ -268,7 +270,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
                     ? null
                     : () => _resolveConflict(
                           conflict,
-                          ConflictResolution.skip,
+                          conflict_model.ConflictResolution.skip,
                         ),
                 icon: const Icon(Icons.schedule),
                 label: const Text('Skip'),
@@ -281,16 +283,16 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
   }
 
   Future<void> _resolveConflict(
-    SyncConflict conflict,
-    ConflictResolution resolution,
+    conflict_model.SyncConflict conflict,
+    conflict_model.ConflictResolution resolution,
   ) async {
-    if (resolution == ConflictResolution.merge) {
+    if (resolution == conflict_model.ConflictResolution.merge) {
       // Show merge dialog for manual field selection
       await _showMergeDialog(conflict);
       return;
     }
 
-    if (resolution == ConflictResolution.skip) {
+    if (resolution == conflict_model.ConflictResolution.skip) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Conflict skipped. Will remain pending.'),
@@ -303,7 +305,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
 
     try {
       // Apply the resolution
-      final result = ConflictResolutionResult(
+      final result = conflict_model.ConflictResolutionResult(
         conflict: conflict,
         resolution: resolution,
       );
@@ -318,7 +320,7 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Conflict resolved using ${resolution == ConflictResolution.useLocal ? "local" : "server"} version',
+              'Conflict resolved using ${resolution == conflict_model.ConflictResolution.useLocal ? "local" : "server"} version',
             ),
             backgroundColor: Colors.green,
           ),
@@ -337,31 +339,31 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
     }
   }
 
-  Future<void> _applyResolution(ConflictResolutionResult result) async {
+  Future<void> _applyResolution(conflict_model.ConflictResolutionResult result) async {
     // This would call the appropriate repository method to apply the resolution
     // For now, just update sync status in database
     final db = widget.syncWorker.db;
-    
+
     switch (result.conflict.resourceType) {
       case 'user':
         await (db.update(db.users)
               ..where((u) => u.id.equals(result.conflict.localId)))
             .write(UsersCompanion(
-          syncStatus: Value(SyncStatus.synced),
+          syncStatus: drift.Value(SyncStatus.synced),
         ));
         break;
       case 'product':
         await (db.update(db.products)
               ..where((p) => p.id.equals(result.conflict.localId)))
             .write(ProductsCompanion(
-          syncStatus: Value(SyncStatus.synced),
+          syncStatus: drift.Value(SyncStatus.synced),
         ));
         break;
       // Add other resource types as needed
     }
   }
 
-  Future<void> _showMergeDialog(SyncConflict conflict) async {
+  Future<void> _showMergeDialog(conflict_model.SyncConflict conflict) async {
     // Show dialog for manual field selection
     // This would be a complex form allowing user to pick field-by-field
     showDialog(

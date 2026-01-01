@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:workmanager/workmanager.dart';
+import 'package:drift/drift.dart' as drift;
 import '../db/app_database.dart';
 import '../data/remote/api_client.dart';
 import 'sync_worker.dart';
-import 'connectivity_service.dart';
 
 /// Service for managing background sync operations using WorkManager
 class BackgroundSyncService {
@@ -35,12 +35,12 @@ class BackgroundSyncService {
         requiresBatteryNotLow: true, // Don't drain battery
         requiresCharging: false,
       ),
-      existingWorkPolicy: ExistingWorkPolicy.keep, // Don't replace if already scheduled
       backoffPolicy: BackoffPolicy.exponential,
       backoffPolicyDelay: const Duration(minutes: 1),
     );
 
-    print('BackgroundSyncService: Periodic sync registered (every ${frequency.inMinutes} minutes)');
+    print(
+        'BackgroundSyncService: Periodic sync registered (every ${frequency.inMinutes} minutes)');
   }
 
   /// Cancel periodic sync
@@ -86,14 +86,8 @@ void callbackDispatcher() {
         apiClient: apiClient,
       );
 
-      // Check connectivity
-      final connectivityService = ConnectivityService();
-      final isOnline = await connectivityService.checkConnectivity();
-
-      if (!isOnline) {
-        print('BackgroundSync: No connectivity, skipping sync');
-        return Future.value(true);
-      }
+      // Note: WorkManager already has network constraints
+      // Connectivity is checked by WorkManager before running this task
 
       // Perform sync
       await syncWorker.triggerSync();
@@ -119,7 +113,7 @@ class SyncSettings {
     final meta = await (db.select(db.syncMeta)
           ..where((m) => m.key.equals(_syncIntervalKey)))
         .getSingleOrNull();
-    
+
     return int.tryParse(meta?.value ?? '15') ?? 15;
   }
 
@@ -128,7 +122,7 @@ class SyncSettings {
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: _syncIntervalKey,
-            value: minutes.toString(),
+            value: drift.Value(minutes.toString()),
           ),
         );
 
@@ -143,8 +137,8 @@ class SyncSettings {
     final meta = await (db.select(db.syncMeta)
           ..where((m) => m.key.equals(_syncEnabledKey)))
         .getSingleOrNull();
-    
-    return meta?.value.toLowerCase() == 'true';
+
+    return meta?.value?.toLowerCase() == 'true';
   }
 
   /// Enable or disable background sync
@@ -152,7 +146,7 @@ class SyncSettings {
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: _syncEnabledKey,
-            value: enabled.toString(),
+            value: drift.Value(enabled.toString()),
           ),
         );
 
@@ -171,8 +165,8 @@ class SyncSettings {
     final meta = await (db.select(db.syncMeta)
           ..where((m) => m.key.equals(_wifiOnlyKey)))
         .getSingleOrNull();
-    
-    return meta?.value.toLowerCase() == 'true';
+
+    return meta?.value?.toLowerCase() == 'true';
   }
 
   /// Set WiFi-only sync preference
@@ -180,7 +174,7 @@ class SyncSettings {
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: _wifiOnlyKey,
-            value: wifiOnly.toString(),
+            value: drift.Value(wifiOnly.toString()),
           ),
         );
   }
@@ -228,11 +222,11 @@ class SyncStatistics {
 
     // Count conflicts across all tables
     final conflictingUsers = await (db.select(db.users)
-          ..where((u) => u.syncStatus.equals(SyncStatus.conflict)))
+          ..where((u) => u.syncStatus.equals('conflict')))
         .get();
     
     final conflictingProducts = await (db.select(db.products)
-          ..where((p) => p.syncStatus.equals(SyncStatus.conflict)))
+          ..where((p) => p.syncStatus.equals('conflict')))
         .get();
 
     final conflictCount = conflictingUsers.length + conflictingProducts.length;
@@ -251,11 +245,11 @@ class SyncStatistics {
       pendingCount: pending.length,
       failedCount: failed.length,
       conflictCount: conflictCount,
-      lastSuccessfulSync: lastSuccessMeta != null 
-          ? DateTime.tryParse(lastSuccessMeta.value)
+      lastSuccessfulSync: lastSuccessMeta?.value != null 
+          ? DateTime.tryParse(lastSuccessMeta!.value!)
           : null,
-      lastAttemptedSync: lastAttemptMeta != null
-          ? DateTime.tryParse(lastAttemptMeta.value)
+      lastAttemptedSync: lastAttemptMeta?.value != null
+          ? DateTime.tryParse(lastAttemptMeta!.value!)
           : null,
     );
   }

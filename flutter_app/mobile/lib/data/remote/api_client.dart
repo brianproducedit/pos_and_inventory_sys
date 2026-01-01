@@ -65,7 +65,7 @@ class ApiClient {
   }) async {
     final timestamp = lastSyncTime?.toIso8601String() ?? '';
     final url = Uri.parse('$baseUrl/api/sync/pull?since=$timestamp');
-    
+
     final response = await _client.get(
       url,
       headers: {
@@ -77,7 +77,8 @@ class ApiClient {
     if (response.statusCode == 200) {
       return json.decode(response.body) as Map<String, dynamic>;
     } else {
-      throw Exception('Failed to pull changes: ${response.statusCode} ${response.body}');
+      throw Exception(
+          'Failed to pull changes: ${response.statusCode} ${response.body}');
     }
   }
 
@@ -87,7 +88,7 @@ class ApiClient {
     required List<Map<String, dynamic>> changes,
   }) async {
     final url = Uri.parse('$baseUrl/api/sync/push');
-    
+
     final response = await _client.post(
       url,
       headers: {
@@ -100,14 +101,15 @@ class ApiClient {
     if (response.statusCode == 200) {
       return json.decode(response.body) as Map<String, dynamic>;
     } else {
-      throw Exception('Failed to push changes: ${response.statusCode} ${response.body}');
+      throw Exception(
+          'Failed to push changes: ${response.statusCode} ${response.body}');
     }
   }
 
   /// Get sync status from server
   Future<Map<String, dynamic>> getSyncStatus({required String token}) async {
     final url = Uri.parse('$baseUrl/api/sync/status');
-    
+
     final response = await _client.get(
       url,
       headers: {
@@ -295,7 +297,6 @@ class ApiClient {
       );
     }
   }
-
 
   /// Push sync changes to server
   Future<SyncPushResponse> pushSync(List<Map<String, dynamic>> changes) async {

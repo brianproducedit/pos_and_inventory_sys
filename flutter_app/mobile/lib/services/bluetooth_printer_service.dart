@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart' as drift;
 import '../models/receipt_model.dart';
 import '../db/app_database.dart';
 
@@ -70,7 +70,8 @@ class PrintJob {
     this.retryCount = 0,
   });
 
-  bool get isPending => status == PrintJobStatus.queued || status == PrintJobStatus.printing;
+  bool get isPending =>
+      status == PrintJobStatus.queued || status == PrintJobStatus.printing;
   bool get isFailed => status == PrintJobStatus.failed;
   bool get isComplete => status == PrintJobStatus.completed;
 }
@@ -83,7 +84,7 @@ enum PrintJobStatus {
 }
 
 /// Service for managing Bluetooth thermal printer operations
-/// 
+///
 /// Note: This is a framework implementation. In production, you would integrate
 /// with actual Bluetooth printer packages like:
 /// - blue_thermal_printer
@@ -94,9 +95,10 @@ class BluetoothPrinterService extends ChangeNotifier {
 
   // Printer state
   BluetoothPrinter? _connectedPrinter;
-  PrinterConnectionStatus _connectionStatus = PrinterConnectionStatus.disconnected;
+  PrinterConnectionStatus _connectionStatus =
+      PrinterConnectionStatus.disconnected;
   List<BluetoothPrinter> _availablePrinters = [];
-  
+
   // Print queue
   final List<PrintJob> _printQueue = [];
   bool _isProcessingQueue = false;
@@ -106,9 +108,11 @@ class BluetoothPrinterService extends ChangeNotifier {
   // Getters
   BluetoothPrinter? get connectedPrinter => _connectedPrinter;
   PrinterConnectionStatus get connectionStatus => _connectionStatus;
-  List<BluetoothPrinter> get availablePrinters => List.unmodifiable(_availablePrinters);
+  List<BluetoothPrinter> get availablePrinters =>
+      List.unmodifiable(_availablePrinters);
   List<PrintJob> get printQueue => List.unmodifiable(_printQueue);
-  bool get isConnected => _connectionStatus == PrinterConnectionStatus.connected;
+  bool get isConnected =>
+      _connectionStatus == PrinterConnectionStatus.connected;
   int get queuedJobsCount => _printQueue.where((j) => j.isPending).length;
 
   /// Scan for available Bluetooth printers
@@ -119,10 +123,10 @@ class BluetoothPrinterService extends ChangeNotifier {
       // TODO: Integrate with actual Bluetooth scanning
       // Example with blue_thermal_printer:
       // List<BluetoothDevice> devices = await BlueThermalPrinter.instance.getBondedDevices();
-      
+
       // Mock implementation for framework
       await Future.delayed(const Duration(seconds: 2));
-      
+
       _availablePrinters = [
         BluetoothPrinter(
           name: 'POS Printer 1',
@@ -137,7 +141,8 @@ class BluetoothPrinterService extends ChangeNotifier {
       ];
 
       notifyListeners();
-      print('BluetoothPrinterService: Found ${_availablePrinters.length} printers');
+      print(
+          'BluetoothPrinterService: Found ${_availablePrinters.length} printers');
       return _availablePrinters;
     } catch (e) {
       print('BluetoothPrinterService: Scan failed: $e');
@@ -156,16 +161,16 @@ class BluetoothPrinterService extends ChangeNotifier {
       // TODO: Integrate with actual Bluetooth connection
       // Example with blue_thermal_printer:
       // await BlueThermalPrinter.instance.connect(printer.device);
-      
+
       // Mock implementation
       await Future.delayed(const Duration(seconds: 1));
 
       _connectedPrinter = printer;
       _connectionStatus = PrinterConnectionStatus.connected;
-      
+
       // Save to settings
       await _savePrinterSettings(printer);
-      
+
       notifyListeners();
       print('BluetoothPrinterService: Connected to ${printer.name}');
       return true;
@@ -181,13 +186,14 @@ class BluetoothPrinterService extends ChangeNotifier {
   Future<void> disconnect() async {
     if (_connectedPrinter == null) return;
 
-    print('BluetoothPrinterService: Disconnecting from ${_connectedPrinter!.name}...');
+    print(
+        'BluetoothPrinterService: Disconnecting from ${_connectedPrinter!.name}...');
 
     try {
       // TODO: Integrate with actual Bluetooth disconnection
       // Example with blue_thermal_printer:
       // await BlueThermalPrinter.instance.disconnect();
-      
+
       await Future.delayed(const Duration(milliseconds: 500));
 
       _connectedPrinter = null;
@@ -206,17 +212,16 @@ class BluetoothPrinterService extends ChangeNotifier {
       return false;
     }
 
-    print('BluetoothPrinterService: Printing receipt ${receipt.transactionNumber}...');
+    print(
+        'BluetoothPrinterService: Printing receipt ${receipt.transactionNumber}...');
 
     try {
       // Generate ESC/POS commands
-      final commands = receipt.toEscPosCommands();
+      // final commands = receipt.toEscPosCommands();
       
       // TODO: Send commands to printer
       // Example with blue_thermal_printer:
-      // await BlueThermalPrinter.instance.writeBytes(commands);
-      
-      // Mock implementation
+      // await BlueThermalPrinter.instance.writeBytes(receipt.toEscPosCommands());
       await Future.delayed(const Duration(seconds: 1));
 
       print('BluetoothPrinterService: Receipt printed successfully');
@@ -238,7 +243,8 @@ class BluetoothPrinterService extends ChangeNotifier {
     _printQueue.add(job);
     notifyListeners();
 
-    print('BluetoothPrinterService: Receipt queued (${_printQueue.length} in queue)');
+    print(
+        'BluetoothPrinterService: Receipt queued (${_printQueue.length} in queue)');
 
     // Auto-process queue if connected
     if (isConnected && !_isProcessingQueue) {
@@ -353,7 +359,7 @@ class BluetoothPrinterService extends ChangeNotifier {
     if (printerAddress == null) return;
 
     final printerName = await _getPrinterName();
-    
+
     final savedPrinter = BluetoothPrinter(
       name: printerName ?? 'Saved Printer',
       address: printerAddress,
@@ -367,13 +373,13 @@ class BluetoothPrinterService extends ChangeNotifier {
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: 'printer_address',
-            value: printer.address,
+            value: drift.Value(printer.address),
           ),
         );
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: 'printer_name',
-            value: printer.name,
+            value: drift.Value(printer.name),
           ),
         );
   }
@@ -396,7 +402,7 @@ class BluetoothPrinterService extends ChangeNotifier {
   Future<PrinterSettings> getSettings() async {
     final paperWidth = await _getPaperWidth();
     final autoPrint = await _getAutoPrint();
-    
+
     return PrinterSettings(
       paperWidth: paperWidth,
       autoPrint: autoPrint,
@@ -408,13 +414,13 @@ class BluetoothPrinterService extends ChangeNotifier {
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: 'printer_paper_width',
-            value: settings.paperWidth.toString(),
+            value: drift.Value(settings.paperWidth.toString()),
           ),
         );
     await db.into(db.syncMeta).insertOnConflictUpdate(
           SyncMetaCompanion.insert(
             key: 'printer_auto_print',
-            value: settings.autoPrint.toString(),
+            value: drift.Value(settings.autoPrint.toString()),
           ),
         );
     notifyListeners();
@@ -431,7 +437,7 @@ class BluetoothPrinterService extends ChangeNotifier {
     final meta = await (db.select(db.syncMeta)
           ..where((m) => m.key.equals('printer_auto_print')))
         .getSingleOrNull();
-    return meta?.value.toLowerCase() == 'true';
+    return meta?.value?.toLowerCase() == 'true';
   }
 }
 

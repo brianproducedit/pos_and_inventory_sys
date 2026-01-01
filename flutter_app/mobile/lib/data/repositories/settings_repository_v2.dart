@@ -4,11 +4,11 @@ import '../../db/app_database.dart';
 
 /// Settings categories
 enum SettingCategory {
-  store,      // Store-specific settings
-  user,       // User preferences
-  system,     // System configuration
-  printer,    // Printer settings
-  payment,    // Payment method settings
+  store, // Store-specific settings
+  user, // User preferences
+  system, // System configuration
+  printer, // Printer settings
+  payment, // Payment method settings
 }
 
 /// Repository for application settings management
@@ -138,7 +138,8 @@ class SettingsRepository {
   Future<String> getStoreCurrency() => getOrDefault('store.currency', 'USD');
 
   /// Set store currency
-  Future<void> setStoreCurrency(String currency) => set('store.currency', currency);
+  Future<void> setStoreCurrency(String currency) =>
+      set('store.currency', currency);
 
   /// Get tax rate
   Future<double> getTaxRate() async {
@@ -246,7 +247,8 @@ class SettingsRepository {
   }
 
   /// Set items per page
-  Future<void> setItemsPerPage(int count) => setInt('user.items_per_page', count);
+  Future<void> setItemsPerPage(int count) =>
+      setInt('user.items_per_page', count);
 
   // ========== System Settings ==========
 
@@ -264,7 +266,8 @@ class SettingsRepository {
   Future<String?> getAppVersion() => get('system.app_version');
 
   /// Set app version
-  Future<void> setAppVersion(String version) => set('system.app_version', version);
+  Future<void> setAppVersion(String version) =>
+      set('system.app_version', version);
 
   /// Get database version
   Future<int> getDatabaseVersion() async {
@@ -339,7 +342,7 @@ class SettingsRepository {
   /// Import settings from JSON
   Future<void> importSettings(Map<String, dynamic> data) async {
     final settings = data['settings'] as Map<String, dynamic>;
-    
+
     await db.transaction(() async {
       for (final entry in settings.entries) {
         await set(entry.key, entry.value.toString());
@@ -350,7 +353,7 @@ class SettingsRepository {
   /// Reset all settings to defaults
   Future<void> resetToDefaults() async {
     await db.delete(db.syncMeta).go();
-    
+
     // Set essential defaults
     await setStoreCurrency('USD');
     await setLowStockThreshold(10);

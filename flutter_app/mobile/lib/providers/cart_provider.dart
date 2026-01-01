@@ -47,7 +47,8 @@ class CartProvider with ChangeNotifier {
   double getTax({double taxRate = 0.0}) => subtotal * taxRate;
 
   /// Get total amount (subtotal + tax)
-  double getTotal({double taxRate = 0.0}) => subtotal + getTax(taxRate: taxRate);
+  double getTotal({double taxRate = 0.0}) =>
+      subtotal + getTax(taxRate: taxRate);
 
   /// Add product to cart
   Future<bool> addProduct(Product product, {int quantity = 1}) async {
@@ -57,7 +58,8 @@ class CartProvider with ChangeNotifier {
     }
 
     // Check if product already in cart
-    final existingIndex = _items.indexWhere((item) => item.product.id == product.id);
+    final existingIndex =
+        _items.indexWhere((item) => item.product.id == product.id);
 
     if (existingIndex != -1) {
       // Product already in cart, increase quantity
@@ -166,6 +168,11 @@ class CartProvider with ChangeNotifier {
       // Refresh product data from database
       final currentProduct = await productRepository.getById(item.product.id);
 
+      if (currentProduct == null) {
+        errors.add('${item.product.name} is no longer available');
+        continue;
+      }
+
       if (!currentProduct.isActive) {
         errors.add('${item.product.name} is no longer available');
         continue;
@@ -184,7 +191,8 @@ class CartProvider with ChangeNotifier {
   /// Refresh all products in cart with latest data from database
   Future<void> refreshProducts() async {
     for (int i = 0; i < _items.length; i++) {
-      final currentProduct = await productRepository.getById(_items[i].product.id);
+      final currentProduct =
+          await productRepository.getById(_items[i].product.id);
       _items[i] = _items[i].copyWith(product: currentProduct);
     }
     notifyListeners();
@@ -274,7 +282,7 @@ class CartProvider with ChangeNotifier {
 
         final product = await productRepository.getById(productId);
 
-        if (product.isActive && product.stockQuantity >= quantity) {
+        if (product != null && product.isActive && product.stockQuantity >= quantity) {
           _items.add(CartItem(product: product, quantity: quantity));
         }
       } catch (e) {

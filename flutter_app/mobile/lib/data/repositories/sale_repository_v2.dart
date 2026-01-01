@@ -175,7 +175,8 @@ class SaleRepository extends BaseRepository<Sale> {
       taxAmount = sale.totalAmount * (taxRate / (100 + taxRate));
     }
 
-    final subtotal = taxAmount != null ? sale.totalAmount - taxAmount : sale.totalAmount;
+    final subtotal =
+        taxAmount != null ? sale.totalAmount - taxAmount : sale.totalAmount;
 
     return ReceiptModel(
       transactionNumber: sale.transactionNumber,

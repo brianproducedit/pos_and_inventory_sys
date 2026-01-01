@@ -53,7 +53,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
     setState(() {
       _settings = settings;
     });
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -97,7 +97,7 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
               children: [
                 // Connection status card
                 _buildConnectionCard(connectedPrinter),
-                
+
                 const SizedBox(height: 16),
 
                 // Printer actions

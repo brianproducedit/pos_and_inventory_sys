@@ -1,5 +1,3 @@
-import '../db/app_database.dart';
-
 /// Receipt line item
 class ReceiptLineItem {
   final String name;
@@ -77,28 +75,35 @@ class ReceiptModel {
     for (final item in items) {
       // Product name
       buffer.writeln(item.name);
-      
+
       // Quantity x Price = Total
-      final qtyLine = '  ${item.quantity} x \$${item.unitPrice.toStringAsFixed(2)}';
+      final qtyLine =
+          '  ${item.quantity} x \$${item.unitPrice.toStringAsFixed(2)}';
       final totalStr = '\$${item.total.toStringAsFixed(2)}';
       buffer.writeln(_leftRight(qtyLine, totalStr, paperWidth));
     }
     buffer.writeln(divider);
 
     // Totals
-    buffer.writeln(_leftRight('Subtotal:', '\$${subtotal.toStringAsFixed(2)}', paperWidth));
-    
+    buffer.writeln(_leftRight(
+        'Subtotal:', '\$${subtotal.toStringAsFixed(2)}', paperWidth));
+
     if (discount != null && discount! > 0) {
-      buffer.writeln(_leftRight('Discount:', '-\$${discount!.toStringAsFixed(2)}', paperWidth));
+      buffer.writeln(_leftRight(
+          'Discount:', '-\$${discount!.toStringAsFixed(2)}', paperWidth));
     }
-    
+
     if (taxAmount != null && taxAmount! > 0) {
-      final taxLabel = taxRate != null ? 'Tax (${taxRate!.toStringAsFixed(1)}%)' : 'Tax';
-      buffer.writeln(_leftRight(taxLabel, '\$${taxAmount!.toStringAsFixed(2)}', paperWidth));
+      final taxLabel =
+          taxRate != null ? 'Tax (${taxRate!.toStringAsFixed(1)}%)' : 'Tax';
+      buffer.writeln(_leftRight(
+          taxLabel, '\$${taxAmount!.toStringAsFixed(2)}', paperWidth));
     }
-    
+
     buffer.writeln(separator);
-    buffer.writeln(_leftRight('TOTAL:', '\$${total.toStringAsFixed(2)}', paperWidth, bold: true));
+    buffer.writeln(_leftRight(
+        'TOTAL:', '\$${total.toStringAsFixed(2)}', paperWidth,
+        bold: true));
     buffer.writeln(separator);
 
     // Payment
@@ -114,7 +119,7 @@ class ReceiptModel {
     }
 
     buffer.writeln(_center('Thank you!', paperWidth));
-    
+
     return buffer.toString();
   }
 
@@ -126,7 +131,7 @@ class ReceiptModel {
     const esc = 0x1B;
     const gs = 0x1D;
     const lf = 0x0A;
-    
+
     final commands = <int>[];
 
     // Initialize printer
@@ -134,20 +139,20 @@ class ReceiptModel {
 
     // Set to center alignment
     commands.addAll([esc, 0x61, 1]);
-    
+
     // Store name (large text)
     commands.addAll([esc, 0x21, 0x30]); // Double height and width
     commands.addAll(storeName.codeUnits);
     commands.add(lf);
-    
+
     // Reset text size
     commands.addAll([esc, 0x21, 0x00]);
-    
+
     if (storeAddress != null) {
       commands.addAll(storeAddress!.codeUnits);
       commands.add(lf);
     }
-    
+
     if (storePhone != null) {
       commands.addAll(storePhone!.codeUnits);
       commands.add(lf);
@@ -156,7 +161,7 @@ class ReceiptModel {
     // Left align for details
     commands.addAll([esc, 0x61, 0]);
     commands.add(lf);
-    
+
     // Transaction details
     commands.addAll('TXN: $transactionNumber'.codeUnits);
     commands.add(lf);
@@ -171,35 +176,38 @@ class ReceiptModel {
     for (final item in items) {
       commands.addAll(item.name.codeUnits);
       commands.add(lf);
-      commands.addAll('  ${item.quantity} x \$${item.unitPrice.toStringAsFixed(2)} = \$${item.total.toStringAsFixed(2)}'.codeUnits);
+      commands.addAll(
+          '  ${item.quantity} x \$${item.unitPrice.toStringAsFixed(2)} = \$${item.total.toStringAsFixed(2)}'
+              .codeUnits);
       commands.add(lf);
     }
-    
+
     commands.addAll('--------------------------------'.codeUnits);
     commands.add(lf);
 
     // Totals
     commands.addAll('Subtotal: \$${subtotal.toStringAsFixed(2)}'.codeUnits);
     commands.add(lf);
-    
+
     if (taxAmount != null && taxAmount! > 0) {
       commands.addAll('Tax: \$${taxAmount!.toStringAsFixed(2)}'.codeUnits);
       commands.add(lf);
     }
-    
+
     // Bold text for total
     commands.addAll([esc, 0x45, 1]); // Bold on
     commands.addAll('TOTAL: \$${total.toStringAsFixed(2)}'.codeUnits);
     commands.add(lf);
     commands.addAll([esc, 0x45, 0]); // Bold off
-    
+
     commands.addAll('================================'.codeUnits);
     commands.add(lf);
 
     // Payment info
-    commands.addAll('Payment: ${_formatPaymentMethod(paymentMethod)}'.codeUnits);
+    commands
+        .addAll('Payment: ${_formatPaymentMethod(paymentMethod)}'.codeUnits);
     commands.add(lf);
-    
+
     if (paymentReference != null) {
       commands.addAll('Ref: $paymentReference'.codeUnits);
       commands.add(lf);
@@ -231,12 +239,14 @@ class ReceiptModel {
       'store_address': storeAddress,
       'store_phone': storePhone,
       'cashier_name': cashierName,
-      'items': items.map((item) => {
-        'name': item.name,
-        'quantity': item.quantity,
-        'unit_price': item.unitPrice,
-        'total': item.total,
-      }).toList(),
+      'items': items
+          .map((item) => {
+                'name': item.name,
+                'quantity': item.quantity,
+                'unit_price': item.unitPrice,
+                'total': item.total,
+              })
+          .toList(),
       'subtotal': subtotal,
       'tax_rate': taxRate,
       'tax_amount': taxAmount,

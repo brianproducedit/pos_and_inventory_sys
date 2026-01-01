@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
-import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
 
 class EditProductScreen extends StatefulWidget {
@@ -51,20 +51,20 @@ class _EditProductScreenState extends State<EditProductScreen> {
   Future<void> _updateProduct() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // V2: Instant local write, no loading state needed
     setState(() => _isLoading = true);
-
-    final productData = {
-      'name': _nameController.text.trim(),
-      'price': double.parse(_priceController.text),
-      'stock_quantity': int.parse(_stockController.text),
-      'description': _descriptionController.text.trim(),
-      'is_active': _isActive,
-    };
 
     try {
       await context
-          .read<InventoryProvider>()
-          .updateProduct(widget.product['id'], productData);
+          .read<InventoryProviderV2>()
+          .updateProduct(
+            widget.product['id'],
+            name: _nameController.text.trim(),
+            price: double.parse(_priceController.text),
+            stockQuantity: int.parse(_stockController.text),
+            description: _descriptionController.text.trim(),
+            isActive: _isActive,
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product updated successfully!')),
@@ -107,7 +107,7 @@ class _EditProductScreenState extends State<EditProductScreen> {
 
     try {
       await context
-          .read<InventoryProvider>()
+          .read<InventoryProviderV2>()
           .deleteProduct(widget.product['id']);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

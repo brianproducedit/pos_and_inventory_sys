@@ -70,11 +70,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
     try {
       await context.read<InventoryProviderV2>().addProduct(
-        name: _nameController.text.trim(),
-        price: double.parse(_priceController.text),
-        stockQuantity: int.parse(_stockController.text),
-        description: _descriptionController.text.trim(),
-      );
+            name: _nameController.text.trim(),
+            price: double.parse(_priceController.text),
+            stockQuantity: int.parse(_stockController.text),
+            description: _descriptionController.text.trim(),
+          );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product added successfully!')),

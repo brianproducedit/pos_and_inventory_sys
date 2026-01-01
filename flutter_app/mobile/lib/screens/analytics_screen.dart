@@ -22,13 +22,17 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   TabController? _tabController;
   bool _isSuperAdmin = false;
+  bool _isInitialized = false;
+  bool _isInitializing = false;
 
   @override
   void initState() {
     super.initState();
+    // Initialize tab controller immediately
+    _tabController = TabController(length: 3, vsync: this);
     // Determine user role for dynamic UI
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAnalytics();
@@ -36,6 +40,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   }
 
   Future<void> _initializeAnalytics() async {
+    // Prevent multiple concurrent initializations
+    if (_isInitializing || _isInitialized) return;
+    _isInitializing = true;
+
     final analyticsProvider = context.read<AnalyticsProvider>();
     final authProvider = context.read<AuthProvider>();
     final storeProvider = context.read<StoreProvider>();
@@ -70,15 +78,33 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       // Determine user role for dynamic UI
       _isSuperAdmin = authProvider.role == 'superadmin';
 
-      // Initialize tab controller with correct length
-      _tabController = TabController(
-          length: _isSuperAdmin ? 4 : 3, // Add extra tab for superadmin
-          vsync: this);
+      // Update tab controller with correct length if needed
+      final targetLength = _isSuperAdmin ? 4 : 3;
+      if (_tabController != null && _tabController!.length != targetLength) {
+        _tabController!.dispose();
+        _tabController = TabController(length: targetLength, vsync: this);
+      }
 
-      // Load analytics filtered by current store
-      await analyticsProvider.loadAnalyticsForCurrentStore();
+      // Load analytics filtered by current store with timeout
+      await analyticsProvider.loadAnalyticsForCurrentStore().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          debugPrint('AnalyticsScreen: loadAnalyticsForCurrentStore timed out');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Analytics loading timed out')),
+            );
+          }
+        },
+      );
 
-      setState(() {}); // Rebuild with correct tab controller
+      // Mark as initialized to show the content
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _isInitializing = false;
+        });
+      }
     } catch (e, st) {
       // Prevent initialization errors from crashing the UI; show a snackbar and
       // fall back to a minimal tab controller so the screen can render.
@@ -92,9 +118,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       } catch (_) {
         _isSuperAdmin = false;
       }
-      _tabController =
+      // Ensure we have a valid tab controller
+      _tabController ??=
           TabController(length: _isSuperAdmin ? 4 : 3, vsync: this);
-      setState(() {});
+      if (mounted) {
+        setState(() {
+          _isInitialized = true;
+          _isInitializing = false;
+        });
+      }
     }
   }
 
@@ -125,7 +157,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           preferredSize: const Size.fromHeight(120),
           child: Column(
             children: [
-              if (_tabController != null)
+              if (_isInitialized && _tabController != null)
                 TabBar(
                   controller: _tabController,
                   labelColor: Colors.white,
@@ -165,7 +197,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           ),
         ),
       ),
-      body: _tabController != null
+      body: _isInitialized && _tabController != null
           ? TabBarView(
               controller: _tabController,
               children: _isSuperAdmin
@@ -254,15 +286,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                   Expanded(
                     child: _buildMetricCard(
                       'Low Stock Items',
-                      '${() {
+                      () {
                         try {
-                          return context
-                              .watch<InventoryProvider>()
-                              .lowStockCount;
+                          final inventoryProvider =
+                              Provider.of<InventoryProvider>(context,
+                                  listen: false);
+                          return inventoryProvider.lowStockCount.toString();
                         } catch (e) {
-                          return 0;
+                          return '0';
                         }
-                      }()}',
+                      }(),
                       Icons.warning,
                       AppColors.warning,
                     ),
@@ -354,13 +387,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
           return Center(child: Text(analyticsProvider.errorMessage!));
         }
 
-        final inventoryAlerts = () {
-          try {
-            return context.watch<InventoryProvider>().lowStockAlerts;
-          } catch (e) {
-            return <Map<String, dynamic>>[];
-          }
-        }();
+        final inventoryAlerts = <Map<String, dynamic>>[];
+        try {
+          final inventoryProvider =
+              Provider.of<InventoryProvider>(context, listen: false);
+          inventoryAlerts.addAll(inventoryProvider.lowStockAlerts);
+        } catch (e) {
+          // InventoryProvider not available, use empty list
+        }
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),

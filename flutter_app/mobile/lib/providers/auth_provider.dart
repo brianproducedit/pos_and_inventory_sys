@@ -17,6 +17,7 @@ class AuthProvider with ChangeNotifier {
   String? get role => _role;
 
   // Convenience getters
+  int? get userId => _user?.id;
   int? get storeId => _user?.storeId;
   String? get username => _user?.username;
 
@@ -59,16 +60,42 @@ class AuthProvider with ChangeNotifier {
   static const int _localProductSeedThreshold = 10;
 
   Future<void> login(String username, String password) async {
-    await _authService.login(username, password);
-    // Assume data has user info, but for now, fetch from /users/me
-    await _fetchUserInfo();
-    _isAuthenticated = true;
-    notifyListeners();
-
-    // Fire-and-forget: ensure local DB seeding occurs when a freshly-logged-in
-    // device appears to have a sparse products table. This helps devices that
-    // missed initial seeding to fetch the canonical product catalog.
-    unawaited(_seedLocalDbIfNeeded());
+    try {
+      await _authService.login(username, password);
+      // Assume data has user info, but for now, fetch from /users/me
+      await _fetchUserInfo();
+      _isAuthenticated = true;
+      notifyListeners();
+      // Fire-and-forget: ensure local DB seeding occurs when a freshly-logged-in
+      // device appears to have a sparse products table. This helps devices that
+      // missed initial seeding to fetch the canonical product catalog.
+      unawaited(_seedLocalDbIfNeeded());
+    } catch (e) {
+      // If login fails (likely offline), try offline login with the same credentials
+      debugPrint('Online login failed, attempting offline login: $e');
+      final dbHelper = DatabaseHelper();
+      final offlineOk = await _authService.offlineLogin(
+        dbHelper,
+        username: username,
+        password: password,
+      );
+      if (offlineOk) {
+        final db = await dbHelper.database;
+        final userRows = await db.query('users',
+            where: 'username = ?', whereArgs: [username], limit: 1);
+        if (userRows.isNotEmpty) {
+          _user = User.fromMap(userRows.first);
+          _role = _user!.role;
+          _isAuthenticated = true;
+          notifyListeners();
+          debugPrint('Offline login successful for user: $username');
+          return;
+        }
+      }
+      // Re-throw with more context if offline login also failed
+      throw AuthException('offline_failed',
+          'Login failed. Please check your credentials or connect to the internet.');
+    }
   }
 
   Future<void> _fetchUserInfo() async {
@@ -112,13 +139,28 @@ class AuthProvider with ChangeNotifier {
       _isAuthenticated = true;
       notifyListeners();
       try {
-        // Fetch fresh user data to ensure we have the complete user object
+        // Try to fetch fresh user data from server
         await _fetchUserInfo();
         _isAuthenticated = true;
         notifyListeners();
       } catch (e) {
-        // If fetching user info fails, clear stored data
-        await logout();
+        // If fetching user info fails (offline), try to load from local DB
+        try {
+          final dbHelper = DatabaseHelper();
+          final db = await dbHelper.database;
+          final userRows = await db.query('users', limit: 1);
+          if (userRows.isNotEmpty) {
+            final userMap = userRows.first;
+            _user = User.fromMap(userMap);
+            _role = _user!.role;
+            _isAuthenticated = true;
+            notifyListeners();
+          }
+        } catch (e) {
+          // If local DB also fails, do not log out, just keep current state
+          debugPrint(
+              'AuthProvider: offline and failed to load user from local DB: $e');
+        }
       }
     }
   }

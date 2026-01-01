@@ -10,14 +10,22 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
+import 'package:mobile/data/repositories/transaction_repository.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 class ReceiptScreen extends StatefulWidget {
   final int saleId;
   final int? storeId; // optional override for tests or explicit store context
   final SalesService? salesService; // optional injectable service for testing
+  final TransactionRepository?
+      transactionRepository; // for offline receipt generation
 
   const ReceiptScreen(
-      {super.key, required this.saleId, this.storeId, this.salesService});
+      {super.key,
+      required this.saleId,
+      this.storeId,
+      this.salesService,
+      this.transactionRepository});
 
   @override
   State<ReceiptScreen> createState() => _ReceiptScreenState();
@@ -45,6 +53,25 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     try {
       setState(() => _isLoading = true);
 
+      // First try offline receipt generation
+      if (widget.transactionRepository != null) {
+        try {
+          final offlineReceipt =
+              await widget.transactionRepository!.getTransaction(widget.saleId);
+          if (offlineReceipt != null) {
+            setState(() {
+              _receiptData = offlineReceipt;
+              _isLoading = false;
+            });
+            return; // Successfully loaded offline receipt
+          }
+        } catch (e) {
+          // Offline receipt failed, continue to online attempt
+          debugPrint('Offline receipt generation failed: $e');
+        }
+      }
+
+      // If offline failed or not available, try online receipt
       // Determine store id to use for request. Precedence:
       // 1) explicit widget.storeId (injected for tests or explicit flows)
       // 2) current store from StoreProvider (if available)
@@ -372,6 +399,35 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
+
+        // Offline indicator
+        if (_receiptData!['is_offline'] == true) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.orange[100],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.orange[300]!),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.offline_bolt, size: 16, color: Colors.orange[800]),
+                const SizedBox(width: 4),
+                Text(
+                  'Offline Receipt',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.orange[800],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 8),
         Text(
           'Sale #${_receiptData!['sale_id']}',
@@ -601,13 +657,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           File('${directory.path}/receipt_${_receiptData!['sale_id']}.pdf');
       await file.writeAsBytes(await pdf.save());
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Receipt saved to ${file.path}')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Receipt saved to ${file.path}')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save receipt: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to save receipt: $e')),
+        );
+      }
     }
   }
 
@@ -642,13 +702,17 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
         printText: PrintTextSize(size: 1, text: '\n\n'),
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Receipt sent to printer')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Receipt sent to printer')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error printing receipt: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error printing receipt: $e')),
+        );
+      }
     } finally {
       // Disconnect from printer
       try {

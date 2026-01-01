@@ -23,7 +23,7 @@ class FakeProductRepo implements ProductRepository {
   Future<int> addProduct(Product product) async => 1;
 
   @override
-  Future<List<Product>> getAllProducts() async => [];
+  Future<List<Product>> getAllProducts({int? storeId}) async => [];
 
   @override
   Future<int> updateStock(int localProductId, int newQuantity) async => 1;

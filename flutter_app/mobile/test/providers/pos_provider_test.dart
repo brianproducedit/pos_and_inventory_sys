@@ -28,16 +28,24 @@ class FakeProductRepository extends ProductRepository {
   FakeProductRepository(this._items) : super(db: DatabaseHelper());
 
   @override
-  Future<List<Product>> getAllProducts() async =>
-      _items.map((i) => Product.fromMap(i.toMap())).toList();
+  Future<List<Product>> getAllProducts({int? storeId}) async {
+    final filteredItems = storeId != null
+        ? _items.where((item) => item.storeId == storeId).toList()
+        : _items;
+    return filteredItems.map((i) => Product.fromMap(i.toMap())).toList();
+  }
 }
 
 class _FakeProduct {
   final int id;
   final int storeId;
   final int stockQuantity;
+  final int? serverId;
   _FakeProduct(
-      {required this.id, required this.storeId, this.stockQuantity = 5});
+      {required this.id,
+      required this.storeId,
+      this.stockQuantity = 5,
+      this.serverId});
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -45,6 +53,7 @@ class _FakeProduct {
         'price': 5.0,
         'stock_quantity': stockQuantity,
         'store_id': storeId,
+        'server_id': serverId,
       };
 }
 
@@ -175,8 +184,8 @@ void main() {
       () async {
     // Fake repository that returns products from stores 1 and 2
     final repo = FakeProductRepository([
-      _FakeProduct(id: 1, storeId: 1),
-      _FakeProduct(id: 2, storeId: 2),
+      _FakeProduct(id: 1, storeId: 1, serverId: 1),
+      _FakeProduct(id: 2, storeId: 2, serverId: 2),
     ]);
 
     final pos = PosProvider(productRepository: repo);
@@ -202,8 +211,8 @@ void main() {
   test('PosProvider filters repository products on store switch', () async {
     // Two products in different stores
     final repo = FakeProductRepository([
-      _FakeProduct(id: 1, storeId: 1),
-      _FakeProduct(id: 2, storeId: 2),
+      _FakeProduct(id: 1, storeId: 1, serverId: 1),
+      _FakeProduct(id: 2, storeId: 2, serverId: 2),
     ]);
 
     final pos = PosProvider(productRepository: repo);

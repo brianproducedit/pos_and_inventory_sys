@@ -5,6 +5,7 @@ import 'package:mobile/providers/pos_provider.dart';
 import 'package:mobile/data/repositories/transaction_repository.dart';
 import 'package:mobile/data/repositories/product_repository.dart';
 import 'package:mobile/domain/models/product.dart';
+import 'package:mobile/domain/models/transaction.dart';
 
 class FakeTransactionRepo implements TransactionRepository {
   @override
@@ -19,14 +20,21 @@ class FakeTransactionRepo implements TransactionRepository {
       {required String transactionNumber,
       required double totalAmount,
       required String paymentMethod,
-      required List<Map<String, dynamic>> items}) async {
+      required List<Map<String, dynamic>> items,
+      int? storeId,
+      int? userId}) async {
     addCalled = true;
     return 100;
   }
 
   @override
-  Future<List<Map<String, dynamic>>> getAllTransactions() async {
+  Future<List<Transaction>> getAllTransactions({int? storeId}) async {
     return [];
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getTransaction(int transactionId) async {
+    return null;
   }
 }
 
@@ -43,7 +51,7 @@ class FakeProductRepo implements ProductRepository {
   Future<int> addProduct(product) async => 1;
 
   @override
-  Future<List<Product>> getAllProducts() async {
+  Future<List<Product>> getAllProducts({int? storeId}) async {
     getAllCalled = true;
     return [
       Product(id: 1, name: 'Test', sku: 'T1', price: 10.0, stockQuantity: 10)

@@ -10,7 +10,7 @@ import secrets
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.orm import Session
-from src.database import SessionLocal, engine
+from src.database import SessionLocal, get_engine
 from src.models import User, UserRole
 from src.auth import get_password_hash
 

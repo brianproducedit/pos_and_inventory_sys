@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from src.database import get_db
 from src.auth import get_current_active_user, get_password_hash
-from src.models import User, Store, UserRole, UserStore
+from src.models import User, Store, UserRole, UserStore, Sale, InventoryLog, UserSettings
 from src.audit_service import AuditService, AUDIT_ACTIONS
 from pydantic import BaseModel
 from typing import Optional, List
@@ -157,7 +157,7 @@ async def create_store(store: StoreCreate, request: Request, db: Session = Depen
     
     return StoreResponse.from_orm(new_store)
 
-@router.put("/users/{user_id}/store/{store_id}")
+@router.put("/users/{user_id}/store/{store_id}", response_model=UserResponse)
 async def assign_store_to_user(user_id: int, store_id: int, request: Request, db: Session = Depends(get_db), current_user = Depends(get_current_active_user)):
     if current_user.role.value != "superadmin":
         raise HTTPException(status_code=403, detail="Only superadmin can assign stores")
@@ -185,10 +185,11 @@ async def assign_store_to_user(user_id: int, store_id: int, request: Request, db
             db.add(assign)
             db.commit()
 
-        # Ensure the user's persisted current store is set if not already
-        if user.store_id is None:
-            user.store_id = store_id
-            db.commit()
+        # Always update the user's current store when assigning to a store
+        # This ensures the admin's current context changes to the newly assigned store
+        user.store_id = store_id
+        user.updated_at = datetime.utcnow()
+        db.commit()
 
     # Log the store assignment
     audit_service = AuditService(db)
@@ -206,7 +207,8 @@ async def assign_store_to_user(user_id: int, store_id: int, request: Request, db
         user_agent=request.headers.get("user-agent")
     )
     
-    return {"message": "Store assigned successfully"}
+    db.refresh(user)
+    return UserResponse.from_orm(user)
 
 @router.get("/users", response_model=List[UserResponse])
 async def read_users(
@@ -522,7 +524,22 @@ async def hard_delete_user(
     if user.id == current_user.id:
         raise HTTPException(status_code=403, detail="Cannot delete your own account")
 
-    # Hard delete the user
+    from src.routers.sync import _make_change
+
+    # Record the deletion in the sync change log so it propagates to all clients
+    try:
+        _make_change(db, entity_type='user', entity_id=str(user_id), operation='delete', payload={}, origin_client_id=None)
+    except Exception as e:
+        # Log but don't fail the deletion if sync recording fails
+        print(f"Warning: Failed to record user hard delete in sync log: {e}")
+
+    # Hard delete the user and related records
+    # Delete related records first to avoid foreign key constraint violations
+    db.query(UserStore).filter(UserStore.user_id == user_id).delete()
+    db.query(Sale).filter(Sale.user_id == user_id).delete()
+    db.query(InventoryLog).filter(InventoryLog.user_id == user_id).delete()
+    db.query(UserSettings).filter(UserSettings.user_id == user_id).delete()
+    # Delete the user
     db.delete(user)
     db.commit()
     return {"message": "User permanently deleted successfully"}
@@ -677,12 +694,20 @@ async def hard_delete_store_endpoint(
         raise HTTPException(status_code=403, detail="Only superadmin can hard delete stores")
 
     from src.store_utils import hard_delete_store
+    from src.routers.sync import _make_change
 
     # Capture actor id before deletion in case their user row is affected
     actor_id = current_user.id
 
     # Will raise HTTPException(404) if not found
     result = hard_delete_store(db, store_id)
+
+    # Record the deletion in the sync change log so it propagates to all clients
+    try:
+        _make_change(db, entity_type='store', entity_id=str(store_id), operation='delete', payload={}, origin_client_id=None)
+    except Exception as e:
+        # Log but don't fail the deletion if sync recording fails
+        print(f"Warning: Failed to record store hard delete in sync log: {e}")
 
     # Log the hard delete action using captured actor_id
     audit_service = AuditService(db)

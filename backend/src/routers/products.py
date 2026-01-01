@@ -181,6 +181,15 @@ async def delete_product(
     sale_items_deleted = db.query(SaleItem).filter(SaleItem.product_id == product.id).delete()
     inventory_logs_deleted = db.query(InventoryLog).filter(InventoryLog.product_id == product.id).delete()
 
+    from src.routers.sync import _make_change
+
+    # Record the deletion in the sync change log so it propagates to all clients
+    try:
+        _make_change(db, entity_type='product', entity_id=str(product.id), operation='delete', payload={}, origin_client_id=None)
+    except Exception as e:
+        # Log but don't fail the deletion if sync recording fails
+        print(f"Warning: Failed to record product delete in sync log: {e}")
+
     # Delete the product
     db.delete(product)
     db.commit()

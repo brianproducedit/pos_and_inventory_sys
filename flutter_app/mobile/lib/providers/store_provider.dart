@@ -71,11 +71,14 @@ class StoreProvider with ChangeNotifier {
           'StoreProvider._loadStoredStoreContext: fetching current store from backend');
       final currentStoreData = await _storeService.getCurrentStore();
       debugPrint(
-          'StoreProvider._loadStoredStoreContext: currentStoreData=$currentStoreData');
+          'StoreProvider._loadStoredStoreContext: received currentStoreData=$currentStoreData');
 
       // If backend provides a canonical current_store (may be null for All Stores)
       if (currentStoreData.containsKey('current_store')) {
         final cs = currentStoreData['current_store'];
+        debugPrint(
+            'StoreProvider._loadStoredStoreContext: current_store from backend=$cs');
+
         // Normalize malformed backend: map with null id should be treated as All Stores
         if (cs == null || (cs is Map && cs['id'] == null)) {
           debugPrint(
@@ -85,9 +88,13 @@ class StoreProvider with ChangeNotifier {
           // a deterministic fallback: load _myStores and pick the first available store.
           final prefs = await SharedPreferences.getInstance();
           final role = prefs.getString('user_role')?.toLowerCase();
+          debugPrint('StoreProvider._loadStoredStoreContext: user role=$role');
+
           if (role == 'superadmin' || role == 'admin') {
             _currentStore = null;
             _restoredStoreContext = true;
+            debugPrint(
+                'StoreProvider._loadStoredStoreContext: admin/superadmin with null store - allowing All Stores');
           } else {
             // Ensure we have myStores loaded so we can pick a sensible fallback.
             if (_myStores.isEmpty) {
@@ -115,6 +122,8 @@ class StoreProvider with ChangeNotifier {
         } else {
           _currentStore = cs;
           _restoredStoreContext = true;
+          debugPrint(
+              'StoreProvider._loadStoredStoreContext: successfully set _currentStore to ${_currentStore?['name']} (id=${_currentStore?['id']})');
         }
         debugPrint(
             'StoreProvider._loadStoredStoreContext: restored _currentStore=${_currentStore}');
@@ -312,7 +321,10 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      _availableStores = await _storeService.getAvailableStores();
+      // Load my stores which are already filtered by the backend
+      await loadMyStores();
+      _availableStores = List.from(_myStores);
+
       debugPrint(
           'StoreProvider.loadAvailableStores: count=${_availableStores.length}');
     } catch (e) {
@@ -393,10 +405,16 @@ class StoreProvider with ChangeNotifier {
         return true;
       }
 
-      // Client-side validation: only enforce if _myStores has been populated.
-      // If it's empty (e.g., not yet loaded), skip and let the backend enforce access control.
+      // Client-side validation: only enforce if _myStores has been populated and user is not admin/superadmin.
+      // Admin/superadmin users can access all stores, not just their assigned ones.
+      // If _myStores is empty (e.g., not yet loaded), skip and let the backend enforce access control.
       if (requestedId != 0) {
-        if (_myStores.isNotEmpty &&
+        final prefs = await SharedPreferences.getInstance();
+        final role = prefs.getString('user_role')?.toLowerCase();
+        final isAdmin = role == 'superadmin' || role == 'admin';
+
+        if (!isAdmin &&
+            _myStores.isNotEmpty &&
             !_myStores.any((s) =>
                 (s['id'] is int
                     ? s['id'] as int
@@ -451,6 +469,19 @@ class StoreProvider with ChangeNotifier {
       _isSwitchingStore = false;
       _safeNotify();
     }
+  }
+
+  /// Reset all user-specific data when a new user logs in
+  void resetUserData() {
+    debugPrint('StoreProvider.resetUserData: clearing user-specific state');
+    _myStores = [];
+    _currentStore = null;
+    _storeUsers = [];
+    _availableStores = [];
+    _isInitialized = false;
+    _restoredStoreContext = false;
+    _errorMessage = null;
+    _safeNotify();
   }
 
   void clearError() {

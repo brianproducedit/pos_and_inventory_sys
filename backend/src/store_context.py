@@ -83,17 +83,8 @@ class StoreContext:
                     UserStore.user_id == self.user.id,
                     UserStore.store_id == store_id
                 ).first()
-                if assigned:
-                    return True
-                # If no explicit assignments exist, fall back to previous behavior
-                # (admins could access all stores). To be conservative, prefer
-                # the assignment-based approach; if no assignments at all exist,
-                # fall back to access all stores for compatibility.
-                any_assignments = db.query(UserStore).filter(UserStore.user_id == self.user.id).first()
-                if not any_assignments:
-                    return True
-                return False
-            # Without DB session, be permissive (legacy behavior)
+                return assigned is not None
+            # Without DB session, be permissive for backward compatibility
             return True
 
         if self.is_cashier:
@@ -114,8 +105,8 @@ class StoreContext:
             ).all()
             if assigned:
                 return assigned
-            # No assignments -> fall back to previous behavior (all active stores)
-            return db.query(Store).filter(Store.is_active == True).all()
+            # No assignments -> return empty list (admins must be explicitly assigned stores)
+            return []
 
         if self.is_cashier and self.user.store_id:
             store = db.query(Store).filter(
@@ -130,8 +121,8 @@ class StoreContext:
         """Switch to a different store context. Accepts store_id==0 to mean "All Stores" (global view)."""
         # Special case: store_id==0 means global/all-stores view
         if store_id == 0:
-            # Only admins and superadmins may switch to global view
-            if not (self.is_superadmin or self.is_admin):
+            # Only superadmins may switch to global view
+            if not self.is_superadmin:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="You do not have access to view all stores"
@@ -139,7 +130,7 @@ class StoreContext:
             # Return a context with no specific store (global)
             return StoreContext(self.user, None)
 
-        if not self.can_access_store(store_id):
+        if not self.can_access_store(store_id, db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You do not have access to this store"

@@ -25,6 +25,6 @@ final productRepositoryProvider = Provider<ProductRepository>((ref) =>
         db: ref.read(databaseHelperProvider),
         api: ref.read(postgresApiServiceProvider)));
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) =>
-    TransactionRepository(
+    TransactionRepositoryImpl(
         db: ref.read(databaseHelperProvider),
         api: ref.read(postgresApiServiceProvider)));

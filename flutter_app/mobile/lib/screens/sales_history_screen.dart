@@ -9,10 +9,13 @@ import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
+import 'package:mobile/data/repositories/transaction_repository.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
   final SalesService? salesService;
-  const SalesHistoryScreen({super.key, this.salesService});
+  final TransactionRepository? transactionRepository;
+  const SalesHistoryScreen(
+      {super.key, this.salesService, this.transactionRepository});
 
   @override
   State<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
@@ -42,10 +45,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       final storeProvider = context.read<StoreProvider>();
       try {
         if (!storeProvider.isInitialized) {
-          unawaited(storeProvider.initialize());
+          await storeProvider.initialize();
         }
       } catch (e) {
-        debugPrint('SalesHistoryScreen: store init skipped: $e');
+        debugPrint('SalesHistoryScreen: store init failed: $e');
       }
 
       // Listen for store changes to reload sales history
@@ -57,12 +60,22 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       if (storeProvider.currentStore == null &&
           authProvider.role != 'superadmin' &&
           authProvider.role != 'admin') {
+        debugPrint(
+            'SalesHistoryScreen: cashier with no current store, waiting for myStores...');
+        // Await myStores to be loaded
+        await storeProvider.loadMyStores();
         // Try to fallback to the user's assigned store if available
         if (storeProvider.myStores.isNotEmpty) {
+          debugPrint(
+              'SalesHistoryScreen: switching to first myStore: ${storeProvider.myStores.first}');
           await storeProvider.switchStore(storeProvider.myStores.first);
+        } else {
+          debugPrint('SalesHistoryScreen: cashier has no assigned stores!');
         }
       }
 
+      debugPrint(
+          'SalesHistoryScreen: loading sales with currentStore=${storeProvider.currentStore}');
       await _loadSalesHistory();
     });
   }
@@ -71,6 +84,10 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
     try {
       if (!mounted) return;
       setState(() => _isLoading = true);
+
+      final List<Map<String, dynamic>> allSales = [];
+
+      // Get current store context
       final storeProvider = context.read<StoreProvider>();
       final rawIdValue = storeProvider.currentStore == null
           ? null
@@ -79,11 +96,81 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
           ? rawIdValue
           : int.tryParse(rawIdValue?.toString() ?? '');
       final int? storeId = (rawId == 0) ? null : rawId;
-      final service = widget.salesService ?? SalesService();
-      final sales = await service.getSales(storeId: storeId);
+
+      debugPrint('SalesHistoryScreen._loadSalesHistory: storeId=$storeId');
+
+      // Track server_ids from offline transactions for de-duplication with online sales
+      final Set<int> offlineServerIds = {};
+
+      // First try to load offline transactions (filtered by store)
+      if (widget.transactionRepository != null) {
+        try {
+          final offlineTransactions = await widget.transactionRepository!
+              .getAllTransactions(storeId: storeId);
+          debugPrint(
+              'SalesHistoryScreen: loaded ${offlineTransactions.length} offline transactions for storeId=$storeId');
+          // Convert offline transactions to sales format
+          for (final tx in offlineTransactions) {
+            // Track server_id for de-duplication (if synced)
+            if (tx.serverId != null) {
+              offlineServerIds.add(tx.serverId!);
+            }
+
+            allSales.add({
+              'id': tx.serverId ?? tx.id, // Prefer server_id for display
+              'local_id': tx.id, // Keep local id for reference
+              'server_id': tx.serverId, // Track sync status
+              'total': tx.totalAmount,
+              'payment_method': tx.paymentMethod,
+              'created_at': tx.createdAt != null
+                  ? DateTime.fromMillisecondsSinceEpoch(tx.createdAt!)
+                      .toIso8601String()
+                  : DateTime.now().toIso8601String(),
+              'transaction_number':
+                  tx.serverId != null ? 'TXN-${tx.serverId}' : 'LOCAL-${tx.id}',
+              'is_offline':
+                  tx.serverId == null, // Only truly offline if not synced
+              'is_synced': tx.serverId != null,
+              'store_id': tx.storeId,
+            });
+          }
+        } catch (e) {
+          debugPrint('Failed to load offline transactions: $e');
+        }
+      }
+
+      // Then try to load online sales
+      try {
+        final service = widget.salesService ?? SalesService();
+        debugPrint(
+            'SalesHistoryScreen: fetching online sales for storeId=$storeId');
+        final onlineSales = await service.getSales(storeId: storeId);
+        debugPrint(
+            'SalesHistoryScreen: loaded ${onlineSales.length} online sales');
+
+        // Add online sales, avoiding duplicates using server_id
+        for (final sale in onlineSales) {
+          final saleId = sale['id'] as int?;
+          // Skip if we already have this sale from offline storage (synced transaction)
+          if (saleId != null && offlineServerIds.contains(saleId)) {
+            debugPrint(
+                'SalesHistoryScreen: skipping duplicate sale id=$saleId (already in offline)');
+            continue;
+          }
+          allSales.add({...sale, 'is_offline': false, 'is_synced': true});
+        }
+      } catch (e) {
+        debugPrint('Failed to load online sales: $e');
+        // Continue with offline transactions only
+      }
+
+      // Sort by creation date (newest first)
+      allSales.sort((a, b) => DateTime.parse(b['created_at'])
+          .compareTo(DateTime.parse(a['created_at'])));
+
       if (!mounted) return;
       setState(() {
-        _sales = sales;
+        _sales = allSales;
         _isLoading = false;
       });
     } catch (e) {
@@ -164,9 +251,29 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    'Total: \$${sale['total_amount']?.toStringAsFixed(2) ?? '0.00'}'),
+                    'Total: \$${sale['total_amount']?.toStringAsFixed(2) ?? sale['total']?.toStringAsFixed(2) ?? '0.00'}'),
                 Text('Payment: ${sale['payment_method'] ?? 'N/A'}'),
                 Text('Date: ${_formatDate(sale['created_at'])}'),
+                if (sale['is_offline'] == true) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[100],
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange[300]!),
+                    ),
+                    child: Text(
+                      'Offline',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.orange[800],
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             trailing: const Icon(Icons.chevron_right),

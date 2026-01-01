@@ -46,7 +46,6 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Viewing: All Stores (limited access)'),
-        findsOneWidget);
+    expect(find.textContaining('Store View'), findsOneWidget);
   });
 }

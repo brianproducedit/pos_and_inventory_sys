@@ -20,6 +20,29 @@ async def get_my_stores(
     stores = store_context.get_accessible_stores(db)
     return [StoreResponse.from_orm(store) for store in stores]
 
+@router.get("/current")
+async def get_current_store(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current store for the user, or None for All Stores"""
+    print(f"get_current_store: user_id={current_user.id}, username={current_user.username}, store_id={current_user.store_id}")
+    if current_user.store_id is None:
+        print("get_current_store: user has no store_id, returning null")
+        return {'current_store': None}
+    store = db.query(Store).filter(Store.id == current_user.store_id, Store.is_active == True).first()
+    if store:
+        print(f"get_current_store: found store id={store.id}, name={store.name}")
+        # Use model_validate + model_dump to convert ORM object to dict for proper JSON serialization
+        store_data = StoreResponse.model_validate(store).model_dump()
+        response = {'current_store': store_data}
+        print(f"get_current_store: returning {response}")
+        return response
+    else:
+        # If the stored store is not found or inactive, return None
+        print(f"get_current_store: store not found for store_id={current_user.store_id}")
+        return {'current_store': None}
+
 @router.post("/switch/{store_id}")
 async def switch_store(
     store_id: int,
@@ -77,34 +100,5 @@ async def switch_store(
         "current_store": {
             "id": new_context.store_id,
             "name": store.name if store else None
-        }
-    }
-
-@router.get("/current")
-async def get_current_store(
-    store_context: StoreContext = Depends(get_store_context),
-    db: Session = Depends(get_db)
-):
-    """Get current store information"""
-    if not store_context.store_id:
-        return {"current_store": None}
-
-    store = db.query(Store).filter(
-        Store.id == store_context.store_id,
-        Store.is_active == True
-    ).first()
-
-    if not store:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Current store not found"
-        )
-
-    return {
-        "current_store": {
-            "id": store.id,
-            "name": store.name,
-            "location": store.location,
-            "is_active": store.is_active
         }
     }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:mobile/services/auth_service.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
@@ -5,6 +7,7 @@ import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/services/error_mapper.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/theme/tokens.dart';
 
 class LoginScreenRedesign extends StatefulWidget {
@@ -53,6 +56,13 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
 
     try {
       await authProvider.login(username, password);
+
+      // Reset store provider data for the new user and immediately initialize
+      final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+      storeProvider.resetUserData();
+      // Trigger initialization which loads the user's current store from backend
+      unawaited(storeProvider.initialize());
+
       if (!mounted) return;
       // Show success notification and navigate to home
       ScaffoldMessenger.of(context)
@@ -63,24 +73,34 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       debugPrint('Login error: $e');
 
       // Support both legacy thrown Maps and the new AuthException
-      final friendly = ErrorMapper.friendlyMessage(
-          e is Map ? e : (e is AuthException ? e : e.toString()));
+      String friendly;
+      try {
+        friendly = ErrorMapper.friendlyMessage(
+            e is Map ? e : (e is AuthException ? e : e.toString()));
+      } catch (mapperError) {
+        debugPrint('Error in ErrorMapper: $mapperError');
+        // Fallback to a generic message
+        friendly = 'Login failed. Please check your credentials and try again.';
+      }
 
-      setState(() {
-        _errorMessage = friendly;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = friendly;
+        });
+      }
 
       // If server reports invalid credentials, clear and focus password field for quick retry
       dynamic errObj;
       if (e is Map) errObj = e;
       if (e is AuthException) errObj = e.toMap();
 
-      if (errObj is Map) {
+      if (mounted && errObj is Map) {
         final code = errObj['code'];
         final message = (errObj['message'] ?? '').toString().toLowerCase();
         if (code == 400 ||
             message.contains('incorrect') ||
-            message.contains('password')) {
+            message.contains('password') ||
+            message.contains('invalid')) {
           _passwordController.clear();
           _passwordFocus.requestFocus();
         } else if (message.contains('user') || message.contains('username')) {

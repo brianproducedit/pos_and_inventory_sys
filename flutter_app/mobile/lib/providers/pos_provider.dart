@@ -7,6 +7,7 @@ import '../data/repositories/product_repository.dart';
 import '../data/repositories/transaction_repository.dart';
 import 'store_provider.dart';
 import 'auth_provider.dart';
+import 'sync_provider.dart';
 
 class PosProvider with ChangeNotifier {
   final SalesService _salesService;
@@ -15,16 +16,19 @@ class PosProvider with ChangeNotifier {
   ProductService get productService => _productService;
   final ProductRepository? _productRepository;
   final TransactionRepository? _transactionRepository;
+  SyncProvider? _syncProvider;
 
   PosProvider(
       {SalesService? salesService,
       ProductService? productService,
       ProductRepository? productRepository,
-      TransactionRepository? transactionRepository})
+      TransactionRepository? transactionRepository,
+      SyncProvider? syncProvider})
       : _salesService = salesService ?? SalesService(),
         _productService = productService ?? ProductService(),
         _productRepository = productRepository,
-        _transactionRepository = transactionRepository;
+        _transactionRepository = transactionRepository,
+        _syncProvider = syncProvider;
 
   StoreProvider? _storeProvider;
   int? _lastStoreId;
@@ -39,6 +43,10 @@ class PosProvider with ChangeNotifier {
   /// Optionally set an AuthProvider so the PosProvider can be role-aware
   void setAuthProvider(AuthProvider authProvider) {
     _authProvider = authProvider;
+  }
+
+  void setSyncProvider(SyncProvider syncProvider) {
+    _syncProvider = syncProvider;
   }
 
   final List<Map<String, dynamic>> _cart = [];
@@ -109,14 +117,18 @@ class PosProvider with ChangeNotifier {
 
       // If we have a local repository, use it and apply role-aware behavior
       if (_productRepository != null) {
-        final prods = await _productRepository!.getAllProducts();
+        final prods =
+            await _productRepository!.getAllProducts(storeId: normalizedId);
         final maps = prods.map((p) => p.toMap()).toList();
+        // Filter out products that haven't been synced to the server (server_id is null)
+        final syncedProducts =
+            maps.where((m) => m['server_id'] != null).toList();
         final rawStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
         if (role == 'superadmin' || (role == 'admin' && rawStoreId == 0)) {
-          // Superadmin or admin on All Stores sees all products
-          _availableProducts = maps;
+          // Superadmin or admin on All Stores sees all synced products
+          _availableProducts = syncedProducts;
         } else {
-          // Non-admin: filter strictly by the raw store id (do not treat null as global)
+          // Non-admin: show all products from current store (including locally added ones without server_id)
           if (rawStoreId == null) {
             _availableProducts = [];
           } else {
@@ -218,6 +230,14 @@ class PosProvider with ChangeNotifier {
 
     try {
       if (_transactionRepository != null && _productRepository != null) {
+        // Get store_id and user_id for the transaction
+        final storeIdRaw = _parseStoreId(_storeProvider?.currentStore?['id']);
+        final storeId = _normalizeStoreId(storeIdRaw);
+        final userId = _authProvider?.userId;
+
+        debugPrint(
+            'PosProvider.processSale: creating transaction with storeId=$storeId, userId=$userId');
+
         // Create transaction locally and update local stock (offline-first)
         final txId = await _transactionRepository!.addTransaction(
           transactionNumber: 'TX-${DateTime.now().millisecondsSinceEpoch}',
@@ -230,6 +250,8 @@ class PosProvider with ChangeNotifier {
                     'price': item['unit_price'],
                   })
               .toList(),
+          storeId: storeId,
+          userId: userId,
         );
 
         // Update stock for each product locally
@@ -248,6 +270,8 @@ class PosProvider with ChangeNotifier {
 
         clearCart();
         await loadProducts();
+        // Trigger sync to push transaction and stock changes to server
+        unawaited(_syncProvider?.syncNow());
         return {'transaction_id': txId};
       } else {
         final storeIdRaw = _parseStoreId(_storeProvider?.currentStore?['id']);

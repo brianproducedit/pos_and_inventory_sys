@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:crypto/crypto.dart';
 import '../config/env.dart';
 import '../data/local/database_helper.dart';
 
@@ -11,13 +12,54 @@ import '../data/local/database_helper.dart';
 class AuthException implements Exception {
   final dynamic code; // can be int or String
   final String message;
-  AuthException(this.code, this.message);
+  AuthException(this.code, this.message) {
+    // Ensure message is never null or empty
+    assert(message.isNotEmpty, 'AuthException message cannot be empty');
+  }
   @override
   String toString() => 'AuthException(code: $code, message: $message)';
   Map<String, dynamic> toMap() => {'code': code, 'message': message};
 }
 
 class AuthService {
+  /// Hash password for local storage comparison (simple SHA-256 for offline validation)
+  static String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  /// Attempt offline login using stored credentials and local DB
+  Future<bool> offlineLogin(DatabaseHelper dbHelper,
+      {String? username, String? password}) async {
+    // Use provided credentials or fall back to stored ones
+    final storedUsername =
+        username ?? await _secureStorage.read(key: 'username');
+    final storedPassword =
+        password ?? await _secureStorage.read(key: 'password');
+
+    if (storedUsername == null || storedPassword == null) return false;
+
+    final db = await dbHelper.database;
+    final userRows = await db.query('users',
+        where: 'username = ?', whereArgs: [storedUsername], limit: 1);
+
+    if (userRows.isNotEmpty) {
+      // Check if we have a stored password hash for offline validation
+      final storedHash =
+          await _secureStorage.read(key: 'password_hash_${storedUsername}');
+      if (storedHash != null) {
+        final inputHash = _hashPassword(storedPassword);
+        if (inputHash != storedHash) {
+          return false; // Password mismatch
+        }
+      }
+      // If no stored hash, allow login (backward compatibility)
+      return true;
+    }
+    return false;
+  }
+
   static const String baseUrl = Env.baseUrl;
 
   // Accept an injectable HTTP client for easier testing.
@@ -52,6 +94,12 @@ class AuthService {
       if (token != null) {
         // Write token first
         await _secureStorage.write(key: 'access_token', value: token);
+        // Store credentials for offline login (password hashed for security)
+        await _secureStorage.write(key: 'username', value: username);
+        await _secureStorage.write(key: 'password', value: password);
+        // Store hashed password for offline validation
+        await _secureStorage.write(
+            key: 'password_hash_$username', value: _hashPassword(password));
         // Maintain backward compatibility with code that still reads from SharedPreferences
         try {
           final prefs = await SharedPreferences.getInstance();
@@ -65,15 +113,21 @@ class AuthService {
             final id = userInfo['id'] as int?;
             final name = userInfo['name'] as String? ?? '';
             final email = userInfo['email'] as String? ?? '';
+            final uname = userInfo['username'] as String? ?? username;
+            final role = userInfo['role'] as String? ?? '';
+            final storeId = userInfo['store_id'] as int?;
             final now = DateTime.now().millisecondsSinceEpoch;
             final db = await _dbHelper!.database;
-            // Insert or replace basic user info locally
+            // Insert or replace full user info locally for offline access
             await db.insert(
                 'users',
                 {
                   'server_id': id,
+                  'username': uname,
                   'name': name,
                   'email': email,
+                  'role': role,
+                  'store_id': storeId,
                   'last_synced': now
                 },
                 conflictAlgorithm: ConflictAlgorithm.replace);
@@ -93,23 +147,34 @@ class AuthService {
       return data;
     } else {
       // Try to parse error body to surface actionable messages to UI.
+      String errorMessage = 'Login failed with status ${response.statusCode}';
+      dynamic errorCode = response.statusCode;
+
       try {
         final parsed = jsonDecode(response.body);
         if (parsed is Map) {
           final detail =
               parsed['detail'] ?? parsed['message'] ?? parsed['error'];
           final code = parsed['code'] ?? response.statusCode;
-          debugPrint('Login failed: code=$code, detail=$detail');
-          throw AuthException(code,
-              detail ?? 'Login failed with status ${response.statusCode}');
+
+          if (detail != null && detail.toString().isNotEmpty) {
+            errorMessage = detail.toString();
+          }
+          errorCode = code;
+        } else if (response.body.isNotEmpty) {
+          // If response body is not JSON but not empty, use it as message
+          errorMessage = response.body;
         }
-      } catch (_) {
-        // Non-JSON body, fall through to generic fallback
+      } catch (parseError) {
+        // If JSON parsing fails, use the raw response body if available
+        debugPrint('Failed to parse error response: $parseError');
+        if (response.body.isNotEmpty && response.body != 'null') {
+          errorMessage = response.body;
+        }
       }
 
-      debugPrint(
-          'Login failed with status ${response.statusCode}: ${response.body}');
-      throw AuthException(response.statusCode, response.body);
+      debugPrint('Login failed: code=$errorCode, message=$errorMessage');
+      throw AuthException(errorCode, errorMessage);
     }
   }
 

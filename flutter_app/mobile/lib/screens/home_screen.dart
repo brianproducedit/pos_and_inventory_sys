@@ -13,6 +13,7 @@ import 'package:mobile/widgets/all_stores_banner.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/metric_card.dart';
+import 'package:mobile/widgets/offline_indicator.dart';
 import 'package:mobile/theme/tokens.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -75,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         actions: [
+          const OfflineStatusIcon(),
           if (role == 'superadmin' || role == 'admin') const StoreQuickAction(),
           IconButton(
             icon: const Icon(Icons.logout),
@@ -90,6 +92,10 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Offline indicator banner
+            const OfflineIndicator(),
+            const SizedBox(height: 8),
+
             // All Stores banner (visible when no specific store selected)
             if (storeProvider.currentStore == null)
               Padding(

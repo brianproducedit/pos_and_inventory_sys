@@ -16,7 +16,7 @@ void main() {
       initSqfliteForTests();
       await DatabaseHelper.initTestDb();
       db = DatabaseHelper();
-      repo = TransactionRepository(db: db, api: null as dynamic);
+      repo = TransactionRepositoryImpl(db: db, api: null as dynamic);
     });
 
     tearDown(() async {

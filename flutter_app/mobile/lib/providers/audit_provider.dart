@@ -209,6 +209,29 @@ class AuditProvider with ChangeNotifier {
     return await _auditService.getResourceTypes();
   }
 
+  /// Log an audit event locally (for offline auditing)
+  Future<void> logAuditEvent({
+    required int userId,
+    required String action,
+    required String resourceType,
+    int? resourceId,
+    Map<String, dynamic>? details,
+    String? ipAddress,
+    String? userAgent,
+  }) async {
+    final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
+    await _auditService.logAuditEvent(
+      userId: userId,
+      action: action,
+      resourceType: resourceType,
+      resourceId: resourceId,
+      details: details,
+      ipAddress: ipAddress,
+      userAgent: userAgent,
+      storeId: storeId,
+    );
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();

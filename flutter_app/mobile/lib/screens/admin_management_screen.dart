@@ -321,16 +321,29 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                                         color: Colors.white,
                                       ),
                                     )
-                                  : Checkbox(
-                                      value: isSelected,
-                                      onChanged: (v) => setState(() {
-                                        if (v == true) {
-                                          _selectedAdminIds.add(id);
-                                        } else {
-                                          _selectedAdminIds.remove(id);
-                                        }
-                                      }),
-                                    ),
+                                  : _selectedAdminIds.isNotEmpty
+                                      ? Checkbox(
+                                          value: isSelected,
+                                          onChanged: (v) => setState(() {
+                                            if (v == true) {
+                                              _selectedAdminIds.add(id);
+                                            } else {
+                                              _selectedAdminIds.remove(id);
+                                            }
+                                          }),
+                                        )
+                                      : CircleAvatar(
+                                          backgroundColor:
+                                              admin['is_active'] == true
+                                                  ? Colors.green
+                                                  : Colors.grey,
+                                          child: Icon(
+                                            admin['is_active'] == true
+                                                ? Icons.check
+                                                : Icons.close,
+                                            color: Colors.white,
+                                          ),
+                                        ),
                               title:
                                   Text(admin['full_name'] ?? admin['username']),
                               subtitle: Column(
@@ -387,6 +400,14 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                                 }
 
                                 _showEditAdminDialog(context, admin, stores);
+                              },
+                              onLongPress: () {
+                                // Long press activates selection mode and selects this item
+                                if (id != null) {
+                                  setState(() {
+                                    _selectedAdminIds.add(id);
+                                  });
+                                }
                               },
                             ),
                           );
@@ -534,7 +555,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         _showEditAdminDialog(context, admin, stores);
         break;
       case 'toggle_status':
-        _toggleAdminStatus(admin);
+        _toggleAdminStatus(context, admin);
         break;
       case 'assign_store':
         _showAssignStoreDialog(context, admin, stores);
@@ -643,9 +664,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     );
   }
 
-  void _toggleAdminStatus(Map<String, dynamic> admin) async {
+  void _toggleAdminStatus(
+      BuildContext context, Map<String, dynamic> admin) async {
+    final userManagementProvider = context.read<UserManagementProvider>();
     try {
-      await context.read<UserManagementProvider>().updateUser(
+      await userManagementProvider.updateUser(
         admin['id'],
         {'is_active': !(admin['is_active'] ?? true)},
       );
@@ -810,12 +833,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
 
     if (ok != true) return;
 
+    final userManagementProvider = context.read<UserManagementProvider>();
     setState(() => _isBulkActionLoading = true);
     try {
       for (final id in _selectedAdminIds.toList()) {
-        await context
-            .read<UserManagementProvider>()
-            .updateUser(id, {'is_active': activate});
+        await userManagementProvider.updateUser(id, {'is_active': activate});
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -854,10 +876,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     );
 
     if (ok != true) return;
+    final userManagementProvider = context.read<UserManagementProvider>();
     setState(() => _isBulkActionLoading = true);
     try {
       for (final id in _selectedAdminIds.toList()) {
-        await context.read<UserManagementProvider>().hardDeleteUser(id);
+        await userManagementProvider.hardDeleteUser(id);
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

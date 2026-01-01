@@ -116,6 +116,38 @@ void main() {
     final token = await auth.getToken();
     expect(token, isNull);
   });
+
+  test('offlineLogin succeeds with stored credentials and local user',
+      () async {
+    final fakeStore = TestSecureStorage();
+    await fakeStore.write(key: 'username', value: 'testuser');
+    await fakeStore.write(key: 'password', value: 'testpass');
+
+    final dbHelper = DatabaseHelper();
+    final db = await dbHelper.database;
+    await db.insert('users', {
+      'server_id': 1,
+      'username': 'testuser',
+      'name': 'Test User',
+      'email': 'test@example.com',
+      'role': 'admin',
+      'store_id': 1,
+      'created_at': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+      'last_synced': DateTime.now().millisecondsSinceEpoch,
+    });
+
+    final auth = AuthService(null, fakeStore, dbHelper);
+    final success = await auth.offlineLogin(dbHelper);
+    expect(success, true);
+  });
+
+  test('offlineLogin fails without stored credentials', () async {
+    final fakeStore = TestSecureStorage();
+    final auth = AuthService(null, fakeStore, DatabaseHelper());
+    final success = await auth.offlineLogin(DatabaseHelper());
+    expect(success, false);
+  });
 }
 
 class _BadDbHelper {

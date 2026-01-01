@@ -27,7 +27,7 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
     final myStores = storeProvider.myStores;
     final currentStore = storeProvider.currentStore;
 
-    final canViewAll = userRole == 'superadmin' || userRole == 'admin';
+    final canViewAll = userRole == 'superadmin';
 
     // If the user has no stores and cannot view all stores, hide the switcher
     if (myStores.isEmpty && !canViewAll) {

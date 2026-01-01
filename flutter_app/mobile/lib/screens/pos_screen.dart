@@ -7,6 +7,7 @@ import 'package:mobile/providers/pos_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
@@ -20,7 +21,7 @@ class PosScreen extends StatefulWidget {
   State<PosScreen> createState() => _PosScreenState();
 }
 
-class _PosScreenState extends State<PosScreen> {
+class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
   // Search state
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -29,6 +30,7 @@ class _PosScreenState extends State<PosScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Load products when screen initializes
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final posProvider = context.read<PosProvider>();
@@ -46,6 +48,7 @@ class _PosScreenState extends State<PosScreen> {
       // Set auth provider for role-aware product loading
       final auth = context.read<AuthProvider>();
       posProvider.setAuthProvider(auth);
+      posProvider.setSyncProvider(context.read<SyncProvider>());
 
       // Prevent non-admins from being left on All Stores: fallback to myStore if needed
       if (storeProvider.currentStore == null &&
@@ -61,7 +64,17 @@ class _PosScreenState extends State<PosScreen> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Reload products when app comes back to foreground
+      final posProvider = context.read<PosProvider>();
+      unawaited(posProvider.loadProducts());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _searchDebounce?.cancel();
     super.dispose();
@@ -87,6 +100,14 @@ class _PosScreenState extends State<PosScreen> {
                     if (context.watch<AuthProvider>().role == 'superadmin' ||
                         context.watch<AuthProvider>().role == 'admin')
                       const StoreQuickAction(),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, color: Colors.white),
+                      tooltip: 'Refresh products',
+                      onPressed: () {
+                        final posProvider = context.read<PosProvider>();
+                        unawaited(posProvider.loadProducts());
+                      },
+                    ),
                     Consumer<PosProvider>(
                       builder: (context, posProvider, child) {
                         return IconButton(
@@ -365,7 +386,7 @@ class _PosScreenState extends State<PosScreen> {
 
     try {
       await posProvider.processSale(paymentMethod);
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Sale completed successfully!'),
@@ -379,7 +400,7 @@ class _PosScreenState extends State<PosScreen> {
         );
       }
     } catch (e) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error processing sale: $e')),
         );

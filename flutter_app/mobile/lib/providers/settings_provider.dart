@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../data/sync/postgres_sync_service.dart';
 import '../services/settings_service.dart';
 import 'auth_provider.dart';
 
@@ -94,8 +95,10 @@ class SystemSettings {
 class SettingsProvider with ChangeNotifier {
   final SettingsService _settingsService;
 
-  SettingsProvider({required AuthProvider authProvider})
-      : _settingsService = SettingsService(authProvider: authProvider);
+  SettingsProvider(
+      {required AuthProvider authProvider, PostgresSyncService? syncService})
+      : _settingsService = SettingsService(
+            authProvider: authProvider, syncService: syncService);
 
   StoreSettings? _storeSettings;
   UserSettings? _userSettings;

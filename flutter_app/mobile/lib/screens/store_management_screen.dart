@@ -336,16 +336,18 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                       child: ListTile(
                         leading: id == null
                             ? null
-                            : Checkbox(
-                                value: isSelected,
-                                onChanged: (v) => setState(() {
-                                  if (v == true) {
-                                    _selectedStoreIds.add(id);
-                                  } else {
-                                    _selectedStoreIds.remove(id);
-                                  }
-                                }),
-                              ),
+                            : _selectedStoreIds.isNotEmpty
+                                ? Checkbox(
+                                    value: isSelected,
+                                    onChanged: (v) => setState(() {
+                                      if (v == true) {
+                                        _selectedStoreIds.add(id);
+                                      } else {
+                                        _selectedStoreIds.remove(id);
+                                      }
+                                    }),
+                                  )
+                                : null,
                         title: Text(
                           store['name'] ?? 'Unnamed Store',
                           style: TextStyle(
@@ -409,6 +411,14 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
                             return;
                           }
                           _showStoreDetails(context, store);
+                        },
+                        onLongPress: () {
+                          // Long press activates selection mode and selects this item
+                          if (id != null) {
+                            setState(() {
+                              _selectedStoreIds.add(id);
+                            });
+                          }
                         },
                       ),
                     );
@@ -483,14 +493,18 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
     try {
       await context.read<StoreProvider>().createStore(storeData);
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Store created successfully')),
-      );
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Store created successfully')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error creating store: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating store: $e')),
+        );
+      }
     }
   }
 
@@ -571,14 +585,18 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
     try {
       await context.read<StoreProvider>().updateStore(storeId, storeData);
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Store updated successfully')),
-      );
+      if (context.mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Store updated successfully')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating store: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error updating store: $e')),
+        );
+      }
     }
   }
 

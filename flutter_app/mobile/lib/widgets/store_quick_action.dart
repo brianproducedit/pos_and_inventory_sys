@@ -17,28 +17,23 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
   Future<void> _openPicker(BuildContext context) async {
     final storeProvider = context.read<StoreProvider>();
     setState(() => _isLoading = true);
-    await storeProvider.loadAvailableStores();
+    await storeProvider.loadMyStores();
     setState(() => _isLoading = false);
 
-    final stores = storeProvider.availableStores;
+    final stores = storeProvider.myStores;
 
     // Determine role & whether All Stores should be shown
     final role = context.read<AuthProvider>().role;
-    final isAdmin = role == 'admin';
     final isSuper = role == 'superadmin';
 
-    // Admins can see the All Stores option, but if they have assigned stores it should be disabled
-    final showAllOption = isSuper || isAdmin;
-    final allDisabled = isAdmin && stores.isNotEmpty;
+    // Only superadmins can see the All Stores option
+    final showAllOption = isSuper;
 
     // If there are no stores and the user is not allowed to view All Stores, inform them
-    if (stores.isEmpty && !(showAllOption && allDisabled == false)) {
-      // note: if showAllOption is true and allDisabled is true, we still show dialog so don't early return
-      if (!(showAllOption && allDisabled)) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('No stores available')));
-        return;
-      }
+    if (stores.isEmpty && !showAllOption) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('No stores available')));
+      return;
     }
 
     final dialogStores = <Map<String, dynamic>>[];
@@ -50,7 +45,6 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
         'id': 0,
         'name': 'All Stores',
         'is_all': true,
-        'disabled': allDisabled
       });
     }
     dialogStores.addAll(stores);
@@ -60,15 +54,9 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
       builder: (context) => SimpleDialog(
         title: const Text('Switch Store'),
         children: dialogStores.map((s) {
-          final disabled = s['disabled'] == true;
           return SimpleDialogOption(
-            onPressed: disabled ? null : () => Navigator.of(context).pop(s),
-            child: Text(
-              s['name'],
-              style: disabled
-                  ? TextStyle(color: Theme.of(context).disabledColor)
-                  : null,
-            ),
+            onPressed: () => Navigator.of(context).pop(s),
+            child: Text(s['name']),
           );
         }).toList(),
       ),
@@ -125,6 +113,10 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
         Theme.of(context).iconTheme.color ??
         Colors.white;
 
+    final tooltip = role == 'superadmin'
+        ? 'Switch between stores (Super Admin: full access)'
+        : 'Switch between assigned stores (Admin: assigned stores only)';
+
     return IconButton(
       icon: _isLoading
           ? SizedBox(
@@ -136,7 +128,7 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
               ),
             )
           : Icon(Icons.store, color: iconColor),
-      tooltip: 'Quick Switch Store',
+      tooltip: tooltip,
       onPressed: () => _openPicker(context),
     );
   }

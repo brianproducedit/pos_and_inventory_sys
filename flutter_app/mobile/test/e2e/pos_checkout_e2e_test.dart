@@ -66,7 +66,7 @@ void main() {
 
     // Use repositories and provider directly to perform the sale (more deterministic than driving full UI)
     final productRepo = ProductRepository(db: db);
-    final txRepo = TransactionRepository(db: db);
+    final txRepo = TransactionRepositoryImpl(db: db);
 
     // Use top-level TestStoreProvider to avoid network calls during e2e/provider tests
     final posProv = PosProvider(

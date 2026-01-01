@@ -50,9 +50,12 @@ class ProductRepoFake extends ProductRepository {
   ProductRepoFake() : super(db: DatabaseHelper());
 
   @override
-  Future<List<Product>> getAllProducts() async {
+  Future<List<Product>> getAllProducts({int? storeId}) async {
     final items = await SimpleFakeRepo().getAllProducts();
-    return items.map((m) => Product.fromMap(m)).toList();
+    final filteredItems = storeId != null
+        ? items.where((m) => m['store_id'] == storeId).toList()
+        : items;
+    return filteredItems.map((m) => Product.fromMap(m)).toList();
   }
 }
 

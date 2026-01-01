@@ -17,7 +17,11 @@ class DatabaseHelper {
   static Database? get debugDb => _db;
 
   Future<Database> get database async {
-    if (_db != null) return _db!;
+    if (_db != null && _db!.isOpen) return _db!;
+    // If database exists but is closed, clean up the reference
+    if (_db != null && !_db!.isOpen) {
+      _db = null;
+    }
     _db = await _initDb();
     return _db!;
   }
@@ -28,7 +32,10 @@ class DatabaseHelper {
 
     try {
       return await openDatabase(path,
-          version: 1, onConfigure: _onConfigure, onCreate: _onCreate);
+          version: 5,
+          onConfigure: _onConfigure,
+          onCreate: _onCreate,
+          onUpgrade: _onUpgrade);
     } catch (e, st) {
       // Defensive: some platform-specific sqlite implementations (Android variations)
       // may attempt to run PRAGMA statements via execSQL and surface a PlatformException
@@ -50,7 +57,7 @@ class DatabaseHelper {
 
         // Retry once with the safe configure handler
         return await openDatabase(path,
-            version: 1, onConfigure: _safeOnConfigure, onCreate: _onCreate);
+            version: 3, onConfigure: _safeOnConfigure, onCreate: _onCreate);
       }
 
       rethrow;
@@ -93,8 +100,13 @@ class DatabaseHelper {
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         server_id INTEGER,
+        username TEXT,
         name TEXT,
         email TEXT UNIQUE,
+        role TEXT,
+        store_id INTEGER,
+        created_at TEXT,
+        updated_at TEXT,
         last_synced INTEGER
       )
     ''');
@@ -135,6 +147,8 @@ class DatabaseHelper {
         transaction_number TEXT,
         total_amount REAL,
         payment_method TEXT,
+        store_id INTEGER,
+        user_id INTEGER,
         created_at INTEGER,
         is_synced INTEGER DEFAULT 0
       )
@@ -162,7 +176,8 @@ class DatabaseHelper {
         payload TEXT,
         created_at INTEGER,
         retry_count INTEGER DEFAULT 0,
-        status TEXT DEFAULT 'pending'
+        status TEXT DEFAULT 'pending',
+        client_seq INTEGER DEFAULT 0
       )
     ''');
 
@@ -185,15 +200,164 @@ class DatabaseHelper {
         value TEXT
       )
     ''');
+
+    // Analytics events
+    await db.execute('''
+      CREATE TABLE analytics_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        event_name TEXT,
+        user_id INTEGER,
+        from_store_id INTEGER,
+        to_store_id INTEGER,
+        duration_ms INTEGER,
+        metadata_json TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        created_at INTEGER,
+        is_synced INTEGER DEFAULT 0
+      )
+    ''');
+
+    // Audit logs (read-only, for local caching)
+    await db.execute('''
+      CREATE TABLE audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        user_id INTEGER,
+        action TEXT,
+        resource_type TEXT,
+        resource_id INTEGER,
+        details_json TEXT,
+        ip_address TEXT,
+        user_agent TEXT,
+        store_id INTEGER,
+        created_at INTEGER,
+        last_synced INTEGER
+      )
+    ''');
+
+    // Settings (store, user, and system settings)
+    await db.execute('''
+      CREATE TABLE settings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        setting_type TEXT, -- 'store', 'user', 'system'
+        key TEXT,
+        value TEXT,
+        user_id INTEGER, -- for user settings
+        store_id INTEGER, -- for store settings
+        created_at INTEGER,
+        updated_at INTEGER,
+        is_synced INTEGER DEFAULT 0,
+        UNIQUE(setting_type, key, user_id, store_id)
+      )
+    ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add client_seq column to sync_queue for checkpointing
+      await db.execute(
+          'ALTER TABLE sync_queue ADD COLUMN client_seq INTEGER DEFAULT 0');
+    }
+    if (oldVersion < 3) {
+      // Create sync_meta table if it doesn't exist
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS sync_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT
+        )
+      ''');
+    }
+    if (oldVersion < 4) {
+      // Add analytics_events table
+      await db.execute('''
+        CREATE TABLE analytics_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id INTEGER,
+          event_name TEXT,
+          user_id INTEGER,
+          from_store_id INTEGER,
+          to_store_id INTEGER,
+          duration_ms INTEGER,
+          metadata_json TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          created_at INTEGER,
+          is_synced INTEGER DEFAULT 0
+        )
+      ''');
+
+      // Add audit_logs table
+      await db.execute('''
+        CREATE TABLE audit_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id INTEGER,
+          user_id INTEGER,
+          action TEXT,
+          resource_type TEXT,
+          resource_id INTEGER,
+          details_json TEXT,
+          ip_address TEXT,
+          user_agent TEXT,
+          store_id INTEGER,
+          created_at INTEGER,
+          last_synced INTEGER
+        )
+      ''');
+
+      // Add settings table
+      await db.execute('''
+        CREATE TABLE settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          server_id INTEGER,
+          setting_type TEXT, -- 'store', 'user', 'system'
+          key TEXT,
+          value TEXT,
+          user_id INTEGER, -- for user settings
+          store_id INTEGER, -- for store settings
+          created_at INTEGER,
+          updated_at INTEGER,
+          is_synced INTEGER DEFAULT 0,
+          UNIQUE(setting_type, key, user_id, store_id)
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      // Add store_id and user_id columns to transactions table
+      // Check if columns already exist to avoid duplicate column errors
+      final tableInfo = await db.rawQuery('PRAGMA table_info(transactions)');
+      final columnNames = tableInfo.map((col) => col['name'] as String).toSet();
+
+      if (!columnNames.contains('store_id')) {
+        await db
+            .execute('ALTER TABLE transactions ADD COLUMN store_id INTEGER');
+      }
+
+      if (!columnNames.contains('user_id')) {
+        await db.execute('ALTER TABLE transactions ADD COLUMN user_id INTEGER');
+      }
+      // These were created before the store_id requirement and cannot be synced
+      await db.execute('''
+        DELETE FROM sync_queue 
+        WHERE table_name = 'transactions' 
+        AND status = 'pending'
+      ''');
+
+      debugPrint(
+          'Migration v5: Added store_id/user_id columns and cleared old transaction sync queue items');
+    }
   }
 
   /// Initialize an in-memory database for tests. Call `TestWidgetsFlutterBinding.ensureInitialized()` in tests.
   static Future<void> initTestDb() async {
     final helper = DatabaseHelper._internal();
     _db = await openDatabase(inMemoryDatabasePath,
-        version: 1,
+        version: 5,
         onConfigure: helper._onConfigure,
-        onCreate: helper._onCreate);
+        onCreate: helper._onCreate,
+        onUpgrade: helper._onUpgrade);
     // Ensure PRAGMAs for FFI in-memory DB (some drivers may not call onConfigure)
     try {
       final journalRes = await _db!.rawQuery('PRAGMA journal_mode = WAL');
@@ -402,6 +566,68 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
+  Future<int> getNextClientSeq() async {
+    final db = await database;
+    final rows = await db
+        .query('sync_meta', where: 'key = ?', whereArgs: ['last_client_seq']);
+    int lastSeq = 0;
+    if (rows.isNotEmpty) {
+      lastSeq = int.tryParse(rows.first['value']?.toString() ?? '') ?? 0;
+    }
+    final nextSeq = lastSeq + 1;
+    await db.insert(
+        'sync_meta', {'key': 'last_client_seq', 'value': nextSeq.toString()},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return nextSeq;
+  }
+
+  /// Transaction-aware version of getNextClientSeq that uses an existing transaction
+  /// to avoid nested transaction locks. Must be called within a transaction.
+  Future<int> getNextClientSeqWithTxn(DatabaseExecutor txn) async {
+    final rows = await txn
+        .query('sync_meta', where: 'key = ?', whereArgs: ['last_client_seq']);
+    int lastSeq = 0;
+    if (rows.isNotEmpty) {
+      lastSeq = int.tryParse(rows.first['value']?.toString() ?? '') ?? 0;
+    }
+    final nextSeq = lastSeq + 1;
+    await txn.insert(
+        'sync_meta', {'key': 'last_client_seq', 'value': nextSeq.toString()},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+    return nextSeq;
+  }
+
+  Future<int> getLastPushedClientSeq() async {
+    final db = await database;
+    final rows = await db.query('sync_meta',
+        where: 'key = ?', whereArgs: ['last_pushed_client_seq']);
+    if (rows.isEmpty) return 0;
+    return int.tryParse(rows.first['value']?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> setLastPushedClientSeq(int seq) async {
+    final db = await database;
+    await db.insert(
+        'sync_meta', {'key': 'last_pushed_client_seq', 'value': seq.toString()},
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Get pending sync queue items, optionally limited, ordered by client_seq
+  Future<List<Map<String, dynamic>>> getPendingSyncItems({int? limit}) async {
+    final db = await database;
+    final query = limit != null
+        ? db.query('sync_queue',
+            where: 'status = ?',
+            whereArgs: ['pending'],
+            orderBy: 'client_seq ASC',
+            limit: limit)
+        : db.query('sync_queue',
+            where: 'status = ?',
+            whereArgs: ['pending'],
+            orderBy: 'client_seq ASC');
+    return await query;
+  }
+
   Future<int> updateStock(int localProductId, int newQuantity) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -522,6 +748,8 @@ class DatabaseHelper {
     required String paymentMethod,
     required List<Map<String, dynamic>>
         items, // each: {product_id, quantity, price}
+    int? storeId,
+    int? userId,
   }) async {
     final db = await database;
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -531,6 +759,8 @@ class DatabaseHelper {
         'transaction_number': transactionNumber,
         'total_amount': totalAmount,
         'payment_method': paymentMethod,
+        'store_id': storeId,
+        'user_id': userId,
         'created_at': now,
         'is_synced': 0
       });
@@ -552,6 +782,8 @@ class DatabaseHelper {
           'transaction_number': transactionNumber,
           'total_amount': totalAmount,
           'payment_method': paymentMethod,
+          'store_id': storeId,
+          'user_id': userId,
           'items': items
         }
       });
@@ -568,18 +800,6 @@ class DatabaseHelper {
 
       return txId;
     });
-  }
-
-  // Query pending sync queue items
-  Future<List<Map<String, dynamic>>> getPendingSyncItems(
-      {int limit = 100}) async {
-    final db = await database;
-    final rows = await db.query('sync_queue',
-        where: 'status = ?',
-        whereArgs: ['pending'],
-        orderBy: 'created_at ASC',
-        limit: limit);
-    return rows;
   }
 
   Future<void> markSyncItemAsSynced(int queueId) async {
@@ -652,6 +872,415 @@ class DatabaseHelper {
       await txn
           .delete('sync_errors', where: 'queue_id = ?', whereArgs: [queueId]);
     });
+  }
+
+  /// Clean up orphaned products that have never been synced to the server
+  /// and are older than the specified age (in milliseconds)
+  Future<int> cleanupOrphanedProducts({int maxAgeMs = 86400000}) async {
+    // 24 hours default
+    final db = await database;
+    final cutoffTime = DateTime.now().millisecondsSinceEpoch - maxAgeMs;
+
+    final result = await db.delete('products',
+        where:
+            'server_id IS NULL AND (last_updated IS NULL OR last_updated < ?)',
+        whereArgs: [cutoffTime]);
+
+    debugPrint(
+        'DatabaseHelper.cleanupOrphanedProducts: removed $result orphaned products');
+    return result;
+  }
+
+  // --- Analytics Events ---
+
+  Future<int> insertAnalyticsEvent({
+    required String eventName,
+    int? userId,
+    int? fromStoreId,
+    int? toStoreId,
+    int? durationMs,
+    Map<String, dynamic>? metadata,
+    String? ipAddress,
+    String? userAgent,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    return await db.transaction((txn) async {
+      final eventId = await txn.insert('analytics_events', {
+        'event_name': eventName,
+        'user_id': userId,
+        'from_store_id': fromStoreId,
+        'to_store_id': toStoreId,
+        'duration_ms': durationMs,
+        'metadata_json': metadata != null ? jsonEncode(metadata) : null,
+        'ip_address': ipAddress,
+        'user_agent': userAgent,
+        'created_at': now,
+        'is_synced': 0,
+      });
+
+      final payload = jsonEncode({
+        'table': 'analytics_events',
+        'row_id': eventId,
+        'action': 'CREATE',
+        'data': {
+          'event_name': eventName,
+          'user_id': userId,
+          'from_store_id': fromStoreId,
+          'to_store_id': toStoreId,
+          'duration_ms': durationMs,
+          'metadata': metadata,
+          'ip_address': ipAddress,
+          'user_agent': userAgent,
+        }
+      });
+
+      await txn.insert('sync_queue', {
+        'table_name': 'analytics_events',
+        'row_id': eventId,
+        'action': 'CREATE',
+        'payload': payload,
+        'created_at': now,
+        'retry_count': 0,
+        'status': 'pending'
+      });
+
+      return eventId;
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getAnalyticsEvents({
+    String? eventName,
+    int? limit,
+    int? offset,
+  }) async {
+    final db = await database;
+    final where = eventName != null ? 'event_name = ?' : null;
+    final whereArgs = eventName != null ? [eventName] : null;
+
+    final results = await db.query(
+      'analytics_events',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'created_at DESC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map((row) {
+      final metadataJson = row['metadata_json'] as String?;
+      return {
+        ...row,
+        'metadata': metadataJson != null ? jsonDecode(metadataJson) : null,
+      };
+    }).toList();
+  }
+
+  // --- Audit Logs ---
+
+  Future<int> insertAuditLog({
+    required int userId,
+    required String action,
+    required String resourceType,
+    int? resourceId,
+    Map<String, dynamic>? details,
+    String? ipAddress,
+    String? userAgent,
+    int? storeId,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    final data = <String, dynamic>{
+      'user_id': userId,
+      'action': action,
+      'resource_type': resourceType,
+      'created_at': now,
+      'last_synced': now,
+    };
+
+    // Only add optional fields if they have non-null values
+    if (resourceId != null) data['resource_id'] = resourceId;
+    if (details != null) data['details_json'] = jsonEncode(details);
+    if (ipAddress != null) data['ip_address'] = ipAddress;
+    if (userAgent != null) data['user_agent'] = userAgent;
+    if (storeId != null) data['store_id'] = storeId;
+
+    return await db.insert('audit_logs', data);
+  }
+
+  Future<List<Map<String, dynamic>>> getAuditLogs({
+    int? userId,
+    String? action,
+    String? resourceType,
+    int? limit,
+    int? offset,
+  }) async {
+    final db = await database;
+    final whereParts = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (userId != null) {
+      whereParts.add('user_id = ?');
+      whereArgs.add(userId);
+    }
+    if (action != null) {
+      whereParts.add('action = ?');
+      whereArgs.add(action);
+    }
+    if (resourceType != null) {
+      whereParts.add('resource_type = ?');
+      whereArgs.add(resourceType);
+    }
+
+    final where = whereParts.isNotEmpty ? whereParts.join(' AND ') : null;
+
+    final results = await db.query(
+      'audit_logs',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'created_at DESC',
+      limit: limit,
+      offset: offset,
+    );
+
+    return results.map((row) {
+      final detailsJson = row['details_json'] as String?;
+      return {
+        ...row,
+        'details': detailsJson != null ? jsonDecode(detailsJson) : null,
+      };
+    }).toList();
+  }
+
+  // --- Settings ---
+
+  Future<int> insertOrUpdateSetting({
+    required String settingType,
+    required String key,
+    required String value,
+    int? userId,
+    int? storeId,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    return await db.transaction((txn) async {
+      // Check if setting exists - build WHERE clause dynamically to handle nulls
+      String where = 'setting_type = ? AND key = ?';
+      List<dynamic> whereArgs = [settingType, key];
+
+      if (userId == null) {
+        where += ' AND user_id IS NULL';
+      } else {
+        where += ' AND user_id = ?';
+        whereArgs.add(userId);
+      }
+
+      if (storeId == null) {
+        where += ' AND store_id IS NULL';
+      } else {
+        where += ' AND store_id = ?';
+        whereArgs.add(storeId);
+      }
+
+      final existing = await txn.query(
+        'settings',
+        where: where,
+        whereArgs: whereArgs,
+      );
+
+      int settingId;
+      String action;
+
+      if (existing.isNotEmpty) {
+        // Update existing
+        settingId = existing.first['id'] as int;
+        await txn.update(
+          'settings',
+          {
+            'value': value,
+            'updated_at': now,
+            'is_synced': 0,
+          },
+          where: 'id = ?',
+          whereArgs: [settingId],
+        );
+        action = 'UPDATE';
+      } else {
+        // Insert new
+        settingId = await txn.insert('settings', {
+          'setting_type': settingType,
+          'key': key,
+          'value': value,
+          'user_id': userId,
+          'store_id': storeId,
+          'created_at': now,
+          'updated_at': now,
+          'is_synced': 0,
+        });
+        action = 'CREATE';
+      }
+
+      final payload = jsonEncode({
+        'table': 'settings',
+        'row_id': settingId,
+        'action': action,
+        'data': {
+          'setting_type': settingType,
+          'key': key,
+          'value': value,
+          'user_id': userId,
+          'store_id': storeId,
+        }
+      });
+
+      await txn.insert('sync_queue', {
+        'table_name': 'settings',
+        'row_id': settingId,
+        'action': action,
+        'payload': payload,
+        'created_at': now,
+        'retry_count': 0,
+        'status': 'pending'
+      });
+
+      return settingId;
+    });
+  }
+
+  Future<Map<String, dynamic>?> getSetting({
+    required String settingType,
+    required String key,
+    int? userId,
+    int? storeId,
+  }) async {
+    final db = await database;
+
+    // Build WHERE clause dynamically to handle nulls
+    String where = 'setting_type = ? AND key = ?';
+    List<dynamic> whereArgs = [settingType, key];
+
+    if (userId == null) {
+      where += ' AND user_id IS NULL';
+    } else {
+      where += ' AND user_id = ?';
+      whereArgs.add(userId);
+    }
+
+    if (storeId == null) {
+      where += ' AND store_id IS NULL';
+    } else {
+      where += ' AND store_id = ?';
+      whereArgs.add(storeId);
+    }
+
+    final results = await db.query(
+      'settings',
+      where: where,
+      whereArgs: whereArgs,
+    );
+
+    if (results.isEmpty) return null;
+    return results.first;
+  }
+
+  Future<List<Map<String, dynamic>>> getSettings({
+    String? settingType,
+    int? userId,
+    int? storeId,
+  }) async {
+    final db = await database;
+    final whereParts = <String>[];
+    final whereArgs = <dynamic>[];
+
+    if (settingType != null) {
+      whereParts.add('setting_type = ?');
+      whereArgs.add(settingType);
+    }
+    if (userId != null) {
+      whereParts.add('user_id = ?');
+      whereArgs.add(userId);
+    }
+    if (storeId != null) {
+      whereParts.add('store_id = ?');
+      whereArgs.add(storeId);
+    }
+
+    final where = whereParts.isNotEmpty ? whereParts.join(' AND ') : null;
+
+    return await db.query(
+      'settings',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'updated_at DESC',
+    );
+  }
+
+  /// Get local transaction statistics for analytics (includes unsynced transactions)
+  /// This allows showing accurate analytics even when offline
+  Future<Map<String, dynamic>> getLocalTransactionStats({int? storeId}) async {
+    try {
+      final db = await database;
+
+      // Build WHERE clause
+      final whereParts = <String>[];
+      final whereArgs = <dynamic>[];
+
+      if (storeId != null && storeId > 0) {
+        whereParts.add('store_id = ?');
+        whereArgs.add(storeId);
+      }
+
+      final where = whereParts.isNotEmpty ? whereParts.join(' AND ') : null;
+
+      // Get all local transactions
+      final rows = await db.query(
+        'transactions',
+        where: where,
+        whereArgs: whereArgs.isEmpty ? null : whereArgs,
+      );
+
+      // Calculate statistics
+      int totalTransactions = rows.length;
+      double totalRevenue = 0.0;
+      int unsyncedCount = 0;
+      double unsyncedRevenue = 0.0;
+
+      for (final row in rows) {
+        final amount = (row['total_amount'] as num?)?.toDouble() ?? 0.0;
+        totalRevenue += amount;
+
+        final isSynced = (row['is_synced'] as int?) == 1;
+        if (!isSynced) {
+          unsyncedCount++;
+          unsyncedRevenue += amount;
+        }
+      }
+
+      return {
+        'total_transactions': totalTransactions,
+        'total_revenue': totalRevenue,
+        'unsynced_count': unsyncedCount,
+        'unsynced_revenue': unsyncedRevenue,
+        'synced_count': totalTransactions - unsyncedCount,
+        'synced_revenue': totalRevenue - unsyncedRevenue,
+        'average_transaction':
+            totalTransactions > 0 ? totalRevenue / totalTransactions : 0.0,
+      };
+    } catch (e) {
+      debugPrint('DatabaseHelper.getLocalTransactionStats error: $e');
+      return {
+        'total_transactions': 0,
+        'total_revenue': 0.0,
+        'unsynced_count': 0,
+        'unsynced_revenue': 0.0,
+        'synced_count': 0,
+        'synced_revenue': 0.0,
+        'average_transaction': 0.0,
+      };
+    }
   }
 
   Future<void> close() async {

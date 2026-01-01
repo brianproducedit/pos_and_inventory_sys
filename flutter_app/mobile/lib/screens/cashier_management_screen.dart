@@ -313,16 +313,28 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                                               : Icons.close,
                                           color: Colors.white),
                                     )
-                                  : Checkbox(
-                                      value: isSelected,
-                                      onChanged: (v) => setState(() {
-                                        if (v == true) {
-                                          _selectedCashierIds.add(id);
-                                        } else {
-                                          _selectedCashierIds.remove(id);
-                                        }
-                                      }),
-                                    ),
+                                  : _selectedCashierIds.isNotEmpty
+                                      ? Checkbox(
+                                          value: isSelected,
+                                          onChanged: (v) => setState(() {
+                                            if (v == true) {
+                                              _selectedCashierIds.add(id);
+                                            } else {
+                                              _selectedCashierIds.remove(id);
+                                            }
+                                          }),
+                                        )
+                                      : CircleAvatar(
+                                          backgroundColor:
+                                              cashier['is_active'] == true
+                                                  ? Colors.green
+                                                  : Colors.grey,
+                                          child: Icon(
+                                              cashier['is_active'] == true
+                                                  ? Icons.check
+                                                  : Icons.close,
+                                              color: Colors.white),
+                                        ),
                               title: Text(
                                   cashier['full_name'] ?? cashier['username']),
                               subtitle: Column(
@@ -370,6 +382,14 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
 
                                 _showEditCashierDialog(context, cashier);
                               },
+                              onLongPress: () {
+                                // Long press activates selection mode and selects this item
+                                if (id != null) {
+                                  setState(() {
+                                    _selectedCashierIds.add(id);
+                                  });
+                                }
+                              },
                             ),
                           );
                         },
@@ -380,12 +400,27 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     );
   }
 
-  void _showCreateCashierDialog(BuildContext context) {
+  void _showCreateCashierDialog(BuildContext context) async {
+    // Ensure stores are loaded for the dropdown
+    final storeProvider = context.read<StoreProvider>();
+    final authProvider = context.read<AuthProvider>();
+
+    if (storeProvider.stores.isEmpty) {
+      await storeProvider.loadStores();
+    }
+
+    // Capture values after async operation
+    final userRole = authProvider.role;
+    var selectedStoreId = authProvider.user?.storeId;
+
     final usernameController = TextEditingController();
     final passwordController = TextEditingController();
+    final confirmPasswordController = TextEditingController();
     final fullNameController = TextEditingController();
-    int? selectedStoreId =
-        context.read<AuthProvider>().user?.storeId; // Default to user's store
+    bool obscurePassword = true;
+    bool obscureConfirmPassword = true;
+
+    if (!context.mounted) return;
 
     showDialog(
       context: context,
@@ -406,7 +441,36 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                   controller: passwordController,
                   label: 'Password',
                   hint: 'Enter cashier password',
-                  obscureText: true,
+                  obscureText: obscurePassword,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscurePassword ? Icons.visibility_off : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscurePassword = !obscurePassword;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+                PrimaryTextField(
+                  controller: confirmPasswordController,
+                  label: 'Confirm Password',
+                  hint: 'Re-enter cashier password',
+                  obscureText: obscureConfirmPassword,
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscureConfirmPassword
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        obscureConfirmPassword = !obscureConfirmPassword;
+                      });
+                    },
+                  ),
                 ),
                 const SizedBox(height: 16),
                 PrimaryTextField(
@@ -414,7 +478,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                   label: 'Full Name',
                   hint: 'Enter cashier full name',
                 ),
-                if (context.read<AuthProvider>().role == 'superadmin') ...[
+                if (userRole == 'superadmin' || userRole == 'admin') ...[
                   const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
                     initialValue: selectedStoreId,
@@ -422,7 +486,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                       labelText: 'Assign to Store',
                       hintText: 'Select a store',
                     ),
-                    items: context.read<StoreProvider>().stores.map((store) {
+                    items: storeProvider.stores.map((store) {
                       final name =
                           (store['name'] ?? 'Unnamed Store').toString();
                       return DropdownMenuItem<int>(
@@ -449,11 +513,21 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
               onPressed: () async {
                 if (usernameController.text.isEmpty ||
                     passwordController.text.isEmpty ||
+                    confirmPasswordController.text.isEmpty ||
                     fullNameController.text.isEmpty ||
                     selectedStoreId == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
                       content: Text('Please fill all fields'),
+                    ),
+                  );
+                  return;
+                }
+
+                if (passwordController.text != confirmPasswordController.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Passwords do not match'),
                     ),
                   );
                   return;
@@ -498,7 +572,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
         _showEditCashierDialog(context, cashier);
         break;
       case 'toggle_status':
-        _toggleCashierStatus(cashier);
+        _toggleCashierStatus(context, cashier);
         break;
       case 'reset_password':
         _showResetPasswordDialog(context, cashier);
@@ -578,9 +652,12 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     );
   }
 
-  void _toggleCashierStatus(Map<String, dynamic> cashier) async {
+  void _toggleCashierStatus(
+      BuildContext context, Map<String, dynamic> cashier) async {
+    final userManagementProvider = context.read<UserManagementProvider>();
+
     try {
-      await context.read<UserManagementProvider>().updateUser(
+      await userManagementProvider.updateUser(
         cashier['id'],
         {'is_active': !(cashier['is_active'] ?? true)},
       );
@@ -735,6 +812,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
   }
 
   Future<void> _confirmBulkToggleCashierStatus(bool activate) async {
+    final userManagementProvider = context.read<UserManagementProvider>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -757,9 +835,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     setState(() => _isBulkActionLoading = true);
     try {
       for (final id in _selectedCashierIds.toList()) {
-        await context
-            .read<UserManagementProvider>()
-            .updateUser(id, {'is_active': activate});
+        await userManagementProvider.updateUser(id, {'is_active': activate});
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -779,6 +855,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
   }
 
   Future<void> _confirmBulkDeleteCashiers() async {
+    final userManagementProvider = context.read<UserManagementProvider>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -801,7 +878,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     setState(() => _isBulkActionLoading = true);
     try {
       for (final id in _selectedCashierIds.toList()) {
-        await context.read<UserManagementProvider>().hardDeleteUser(id);
+        await userManagementProvider.hardDeleteUser(id);
       }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

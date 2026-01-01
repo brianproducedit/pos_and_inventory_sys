@@ -43,7 +43,7 @@ void main() {
     print('pos test: inserted pid=$pid');
 
     final productRepo = ProductRepository(db: db);
-    final txRepo = TransactionRepository(db: db);
+    final txRepo = TransactionRepositoryImpl(db: db);
 
     final posProv = PosProvider(
         productRepository: productRepo, transactionRepository: txRepo);

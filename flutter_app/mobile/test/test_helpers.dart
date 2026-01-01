@@ -14,6 +14,7 @@ import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/analytics_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 
 /// Simple test Auth provider that reports a role and authenticated = true
 class TestAuthProvider extends AuthProvider {
@@ -63,16 +64,22 @@ class TestAnalyticsProvider extends AnalyticsProvider {
   TestAnalyticsProvider() : super();
 }
 
+class TestSyncProvider extends SyncProvider {
+  TestSyncProvider() : super();
+}
+
 /// Wrap a widget with common mock providers used across tests
 Widget wrapWithDefaultProviders(Widget child,
     {AuthProvider? auth,
     StoreProvider? store,
     InventoryProvider? inventory,
-    AnalyticsProvider? analytics}) {
+    AnalyticsProvider? analytics,
+    SyncProvider? sync}) {
   final a = auth ?? TestAuthProvider();
   final s = store ?? TestStoreProvider();
   final i = inventory ?? TestInventoryProvider();
   final an = analytics ?? TestAnalyticsProvider();
+  final sy = sync ?? TestSyncProvider();
 
   return MultiProvider(
     providers: [
@@ -80,6 +87,7 @@ Widget wrapWithDefaultProviders(Widget child,
       ChangeNotifierProvider<StoreProvider>.value(value: s),
       ChangeNotifierProvider<InventoryProvider>.value(value: i),
       ChangeNotifierProvider<AnalyticsProvider>.value(value: an),
+      ChangeNotifierProvider<SyncProvider>.value(value: sy),
     ],
     child: MaterialApp(home: child),
   );

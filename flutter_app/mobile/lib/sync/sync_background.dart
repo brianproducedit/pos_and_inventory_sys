@@ -41,23 +41,15 @@ Future<bool> runBackgroundTask({
         serviceOrFuture is Future ? (await serviceOrFuture) : serviceOrFuture;
     final ok = await syncUsing(service);
     return ok;
-  } finally {
-    try {
-      // Prefer calling DatabaseHelper.close() when available
-      if (dbHelper is DatabaseHelper) {
-        await dbHelper.close();
-      } else {
-        // If a test provides a fake DB with a close() method, attempt to call it
-        try {
-          final maybeClose = (dbHelper as dynamic).close;
-          if (maybeClose is Function) {
-            final res = maybeClose();
-            if (res is Future) await res;
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
+  } catch (e) {
+    // Log but don't crash on background sync errors
+    print('Background sync task failed: $e');
+    return false;
   }
+  // NOTE: We intentionally do NOT close the database here.
+  // The DatabaseHelper uses a singleton pattern, and closing it here would
+  // cause database_closed exceptions in foreground operations.
+  // The database will be properly managed by the app lifecycle.
 }
 
 /// Registers the background worker using the given Workmanager instance.
@@ -89,19 +81,19 @@ void registerBackgroundWork(Workmanager wm,
 /// Core sync logic extracted for easier testing
 Future<bool> syncUsing(dynamic service) async {
   // Support multiple test and production service shapes. Prefer calling
-  // syncPendingChanges() when available, otherwise fall back to pushChanges().
+  // syncPendingChangesBatch() when available, otherwise fall back to syncPendingChanges().
   try {
     bool pushOk = false;
 
     try {
-      // Try preferred API
-      final res = await service.syncPendingChanges();
+      // Try preferred API: batch sync with checkpointing
+      final res = await service.syncPendingChangesBatch();
       if (res is bool) pushOk = res;
     } catch (e) {
-      // Fallback to older shape: pushChanges()
+      // Fallback to syncPendingChanges()
       try {
-        await service.pushChanges();
-        pushOk = true;
+        final res = await service.syncPendingChanges();
+        if (res is bool) pushOk = res;
       } catch (e) {
         // No suitable push method
         return false;
@@ -110,13 +102,11 @@ Future<bool> syncUsing(dynamic service) async {
 
     // Attempt a simple pull if possible (non-fatal)
     try {
-      // Prefer calling pullChanges on the provided service if available
+      // Prefer calling pullChangesSinceSeq on the provided service if available
       try {
-        final maybePull = (service as dynamic).pullChanges;
+        final maybePull = (service as dynamic).pullChangesSinceSeq;
         if (maybePull is Function) {
-          // Use epoch as 'since' so periodic syncs don't accidentally pass a
-          // future timestamp (DateTime.now()) that would result in zero items.
-          await maybePull(since: DateTime.fromMillisecondsSinceEpoch(0));
+          await maybePull();
         } else {
           // Fallback to API fetch when a token exists
           final secure = const FlutterSecureStorage();
@@ -127,7 +117,7 @@ Future<bool> syncUsing(dynamic service) async {
           }
         }
       } catch (_) {
-        // If accessing service.pullChanges throws, fall back to API fetch
+        // If accessing service.pullChangesSinceSeq throws, fall back to API fetch
         final secure = const FlutterSecureStorage();
         final token = await secure.read(key: 'access_token');
         if (token != null) {

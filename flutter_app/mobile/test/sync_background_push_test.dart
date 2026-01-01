@@ -9,20 +9,23 @@ class _FakeDb {
 }
 
 class _FakeSyncService {
-  bool pushCalled = false;
-  bool pullCalled = false;
+  bool syncPendingChangesBatchCalled = false;
+  bool pullChangesSinceSeqCalled = false;
 
-  Future<void> pushChanges() async {
-    pushCalled = true;
+  Future<bool> syncPendingChangesBatch() async {
+    syncPendingChangesBatchCalled = true;
+    return true;
   }
 
-  Future<void> pullChanges({required DateTime since}) async {
-    pullCalled = true;
+  Future<void> pullChangesSinceSeq() async {
+    pullChangesSinceSeqCalled = true;
   }
 }
 
 void main() {
-  test('runBackgroundTask uses sync service and closes db', () async {
+  test(
+      'runBackgroundTask uses sync service but does NOT close db (singleton pattern)',
+      () async {
     final fakeDb = _FakeDb();
     final fakeService = _FakeSyncService();
 
@@ -32,8 +35,10 @@ void main() {
     );
 
     expect(result, isTrue);
-    expect(fakeService.pushCalled, isTrue);
-    expect(fakeService.pullCalled, isTrue);
-    expect(fakeDb.closed, isTrue);
+    expect(fakeService.syncPendingChangesBatchCalled, isTrue);
+    expect(fakeService.pullChangesSinceSeqCalled, isTrue);
+    // Database is NOT closed to avoid race conditions with foreground operations
+    // The singleton pattern ensures the database stays open for the app lifecycle
+    expect(fakeDb.closed, isFalse);
   });
 }

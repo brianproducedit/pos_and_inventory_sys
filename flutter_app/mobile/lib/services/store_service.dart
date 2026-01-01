@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:sqflite/sqflite.dart';
 import '../config/env.dart';
+import '../data/local/database_helper.dart';
 
 class UnauthorizedException implements Exception {
   final String message;
@@ -13,6 +16,17 @@ class UnauthorizedException implements Exception {
 
 class StoreService {
   static const String baseUrl = Env.baseUrl;
+  final DatabaseHelper? _dbHelper;
+  final Connectivity _connectivity;
+
+  StoreService({DatabaseHelper? dbHelper, Connectivity? connectivity})
+      : _dbHelper = dbHelper ?? DatabaseHelper(),
+        _connectivity = connectivity ?? Connectivity();
+
+  Future<bool> _isOnline() async {
+    final result = await _connectivity.checkConnectivity();
+    return result != ConnectivityResult.none;
+  }
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -25,30 +39,91 @@ class StoreService {
     await prefs.remove('access_token');
   }
 
+  /// Cache stores locally for offline access
+  Future<void> _cacheStores(List<Map<String, dynamic>> stores) async {
+    if (_dbHelper == null) return;
+    try {
+      final db = await _dbHelper!.database;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (final store in stores) {
+        await db.insert(
+          'stores',
+          {
+            'server_id': store['id'],
+            'name': store['name'],
+            'location': store['location'],
+            'is_active': store['is_active'] == true ? 1 : 0,
+            'last_updated': now,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to cache stores: $e');
+    }
+  }
+
+  /// Get stores from local cache
+  Future<List<Map<String, dynamic>>> _getOfflineStores() async {
+    if (_dbHelper == null) return [];
+    try {
+      final db = await _dbHelper!.database;
+      final rows = await db.query('stores', where: 'is_active = 1');
+      return rows
+          .map((row) => {
+                'id': row['server_id'] ?? row['id'],
+                'name': row['name'],
+                'location': row['location'],
+                'is_active': row['is_active'] == 1,
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('Failed to get offline stores: $e');
+      return [];
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getStores() async {
     final token = await _getToken();
     if (token == null) throw UnauthorizedException('Not authenticated');
 
-    debugPrint('StoreService.getStores: calling $baseUrl/api/stores');
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/stores'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-    debugPrint(
-        'StoreService.getStores: response status ${response.statusCode}');
+    // Check if online
+    if (!await _isOnline()) {
+      debugPrint('StoreService.getStores: offline, using cached stores');
+      return _getOfflineStores();
+    }
 
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => item as Map<String, dynamic>).toList();
-    } else if (response.statusCode == 401) {
-      await _handleUnauthorized();
-      throw UnauthorizedException(response.body);
-    } else {
-      debugPrint('StoreService.getStores: error body ${response.body}');
-      throw Exception('Failed to load stores: ${response.statusCode}');
+    debugPrint('StoreService.getStores: calling $baseUrl/api/stores');
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/stores'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      debugPrint(
+          'StoreService.getStores: response status ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final stores =
+            data.map((item) => item as Map<String, dynamic>).toList();
+        // Cache for offline access
+        await _cacheStores(stores);
+        return stores;
+      } else if (response.statusCode == 401) {
+        await _handleUnauthorized();
+        throw UnauthorizedException(response.body);
+      } else {
+        debugPrint('StoreService.getStores: error body ${response.body}');
+        throw Exception('Failed to load stores: ${response.statusCode}');
+      }
+    } catch (e) {
+      if (e is UnauthorizedException) rethrow;
+      // Network error, use cached data
+      debugPrint('StoreService.getStores: network error, using cache: $e');
+      return _getOfflineStores();
     }
   }
 
@@ -56,23 +131,39 @@ class StoreService {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
-    debugPrint('StoreService.getMyStores: calling $baseUrl/api/stores');
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/stores'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-    debugPrint(
-        'StoreService.getMyStores: response status ${response.statusCode}');
+    // Check if online
+    if (!await _isOnline()) {
+      debugPrint('StoreService.getMyStores: offline, using cached stores');
+      return _getOfflineStores();
+    }
 
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => item as Map<String, dynamic>).toList();
-    } else {
-      debugPrint('StoreService.getMyStores: error body ${response.body}');
-      throw Exception('Failed to load my stores: ${response.statusCode}');
+    debugPrint(
+        'StoreService.getMyStores: calling $baseUrl/api/users/me/available-stores');
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users/me/available-stores'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      debugPrint(
+          'StoreService.getMyStores: response status ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final stores =
+            data.map((item) => item as Map<String, dynamic>).toList();
+        await _cacheStores(stores);
+        return stores;
+      } else {
+        debugPrint('StoreService.getMyStores: error body ${response.body}');
+        throw Exception('Failed to load my stores: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Network error, use cached data
+      debugPrint('StoreService.getMyStores: network error, using cache: $e');
+      return _getOfflineStores();
     }
   }
 
@@ -81,26 +172,43 @@ class StoreService {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
+    // Check if online
+    if (!await _isOnline()) {
+      debugPrint(
+          'StoreService.getAvailableStores: offline, using cached stores');
+      return _getOfflineStores();
+    }
+
     debugPrint(
         'StoreService.getAvailableStores: calling $baseUrl/api/users/me/available-stores');
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/users/me/available-stores'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-    debugPrint(
-        'StoreService.getAvailableStores: response status ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      final List<dynamic> data = jsonDecode(response.body);
-      return data.map((item) => item as Map<String, dynamic>).toList();
-    } else {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users/me/available-stores'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
       debugPrint(
-          'StoreService.getAvailableStores: error body ${response.body}');
-      throw Exception(
-          'Failed to load available stores: ${response.statusCode}');
+          'StoreService.getAvailableStores: response status ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        final stores =
+            data.map((item) => item as Map<String, dynamic>).toList();
+        await _cacheStores(stores);
+        return stores;
+      } else {
+        debugPrint(
+            'StoreService.getAvailableStores: error body ${response.body}');
+        throw Exception(
+            'Failed to load available stores: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Network error, use cached data
+      debugPrint(
+          'StoreService.getAvailableStores: network error, using cache: $e');
+      return _getOfflineStores();
     }
   }
 
@@ -108,23 +216,60 @@ class StoreService {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
+    // If offline, allow local store switch
+    if (!await _isOnline()) {
+      debugPrint(
+          'StoreService.switchStore: offline, switching locally to $storeId');
+      // Return a mock response for offline switching
+      if (storeId == 0) {
+        return {
+          'current_store': null,
+          'message': 'Switched to All Stores (offline)'
+        };
+      }
+      final stores = await _getOfflineStores();
+      final store = stores.firstWhere(
+        (s) => s['id'] == storeId,
+        orElse: () => {'id': storeId, 'name': 'Unknown Store'},
+      );
+      return {'current_store': store, 'message': 'Switched store (offline)'};
+    }
+
     debugPrint(
         'StoreService.switchStore: POST $baseUrl/api/stores/switch/$storeId');
-    final response = await http.post(
-      Uri.parse('$baseUrl/api/stores/switch/$storeId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-    debugPrint(
-        'StoreService.switchStore: response status ${response.statusCode}');
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/stores/switch/$storeId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
+      debugPrint(
+          'StoreService.switchStore: response status ${response.statusCode}');
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else {
-      debugPrint('StoreService.switchStore: error body ${response.body}');
-      throw Exception('Failed to switch store: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        debugPrint('StoreService.switchStore: error body ${response.body}');
+        throw Exception('Failed to switch store: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Network error, allow local switch
+      debugPrint(
+          'StoreService.switchStore: network error, switching locally: $e');
+      if (storeId == 0) {
+        return {
+          'current_store': null,
+          'message': 'Switched to All Stores (offline)'
+        };
+      }
+      final stores = await _getOfflineStores();
+      final store = stores.firstWhere(
+        (s) => s['id'] == storeId,
+        orElse: () => {'id': storeId, 'name': 'Unknown Store'},
+      );
+      return {'current_store': store, 'message': 'Switched store (offline)'};
     }
   }
 
@@ -132,29 +277,46 @@ class StoreService {
     final token = await _getToken();
     if (token == null) throw Exception('Not authenticated');
 
-    debugPrint('StoreService.getCurrentStore: GET $baseUrl/api/stores/current');
-    final response = await http.get(
-      Uri.parse('$baseUrl/api/stores/current'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
-    );
-    debugPrint(
-        'StoreService.getCurrentStore: response status ${response.statusCode}');
+    // If offline, return from local storage
+    if (!await _isOnline()) {
+      debugPrint('StoreService.getCurrentStore: offline, using cached store');
+      final prefs = await SharedPreferences.getInstance();
+      final storedStoreId = prefs.getInt('current_store_id');
+      if (storedStoreId == null || storedStoreId == 0) {
+        return {'current_store': null};
+      }
+      final stores = await _getOfflineStores();
+      final store = stores.firstWhere(
+        (s) => s['id'] == storedStoreId,
+        orElse: () => {'id': storedStoreId, 'name': 'Unknown Store'},
+      );
+      return {'current_store': store};
+    }
 
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    } else if (response.statusCode == 422) {
-      // Some backends respond with 422 when no canonical current store is set.
-      // Treat this as an explicit 'All Stores' (null current_store) to avoid
-      // surfacing exceptions to the UI.
+    debugPrint('StoreService.getCurrentStore: GET $baseUrl/api/stores/current');
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/stores/current'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 10));
       debugPrint(
-          'StoreService.getCurrentStore: status 422 — treating as All Stores');
+          'StoreService.getCurrentStore: response status ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        debugPrint('StoreService.getCurrentStore: received data=$data');
+        return data;
+      } else {
+        debugPrint(
+            'StoreService.getCurrentStore: error ${response.statusCode} body ${response.body}');
+        throw Exception('Failed to get current store: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('StoreService.getCurrentStore: network error $e');
       return {'current_store': null};
-    } else {
-      debugPrint('StoreService.getCurrentStore: error body ${response.body}');
-      throw Exception('Failed to get current store: ${response.statusCode}');
     }
   }
 

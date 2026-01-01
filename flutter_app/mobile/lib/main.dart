@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/providers/user_management_provider.dart';
 import 'package:mobile/screens/audit_logs_screen.dart';
 import 'package:mobile/services/time_service.dart';
@@ -109,21 +110,40 @@ class MyApp extends StatelessWidget {
               create: (context) => ProductRepository(
                   db: context.read<DatabaseHelper>(),
                   api: context.read<PostgresApiService>())),
-          Provider(
-              create: (context) => TransactionRepository(
+          Provider<TransactionRepository>(
+              create: (context) => TransactionRepositoryImpl(
                   db: context.read<DatabaseHelper>(),
                   api: context.read<PostgresApiService>())),
 
-          // UI-level providers that depend on repositories
-          ChangeNotifierProvider(
-              create: (context) => InventoryProvider(
-                  productRepository: context.read<ProductRepository>(),
-                  dbHelper: context.read<DatabaseHelper>())),
-          ChangeNotifierProvider(
-              create: (context) => PosProvider(
-                  productRepository: context.read<ProductRepository>(),
-                  transactionRepository:
-                      context.read<TransactionRepository>())),
+          // SyncProvider must be created before providers that depend on it
+          ChangeNotifierProvider(create: (_) => SyncProvider()),
+
+          // UI-level providers that depend on repositories and SyncProvider
+          ChangeNotifierProxyProvider<SyncProvider, InventoryProvider>(
+            create: (context) => InventoryProvider(
+                productRepository: context.read<ProductRepository>(),
+                dbHelper: context.read<DatabaseHelper>(),
+                syncProvider: context.read<SyncProvider>()),
+            update: (context, syncProvider, previous) =>
+                previous ??
+                InventoryProvider(
+                    productRepository: context.read<ProductRepository>(),
+                    dbHelper: context.read<DatabaseHelper>(),
+                    syncProvider: syncProvider),
+          ),
+          ChangeNotifierProxyProvider<SyncProvider, PosProvider>(
+            create: (context) => PosProvider(
+                productRepository: context.read<ProductRepository>(),
+                transactionRepository: context.read<TransactionRepository>(),
+                syncProvider: context.read<SyncProvider>()),
+            update: (context, syncProvider, previous) =>
+                previous ??
+                PosProvider(
+                    productRepository: context.read<ProductRepository>(),
+                    transactionRepository:
+                        context.read<TransactionRepository>(),
+                    syncProvider: syncProvider),
+          ),
 
           ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
           ChangeNotifierProvider(create: (_) => StoreProvider()),
@@ -157,7 +177,9 @@ class MyApp extends StatelessWidget {
             '/analytics/events': (context) =>
                 const AnalyticsEventsDashboardScreen(),
             '/add_product': (context) => const AddProductScreen(),
-            '/sales_history': (context) => const SalesHistoryScreen(),
+            '/sales_history': (context) => SalesHistoryScreen(
+                  transactionRepository: context.read<TransactionRepository>(),
+                ),
             '/store_management': (context) => const StoreManagementScreen(),
             '/admin_management': (context) => const AdminManagementScreen(),
             '/cashier_management': (context) => const CashierManagementScreen(),
@@ -182,7 +204,10 @@ class MyApp extends StatelessWidget {
             if (settings.name == '/receipt') {
               final saleId = settings.arguments as int;
               return MaterialPageRoute(
-                builder: (context) => ReceiptScreen(saleId: saleId),
+                builder: (context) => ReceiptScreen(
+                  saleId: saleId,
+                  transactionRepository: context.read<TransactionRepository>(),
+                ),
               );
             }
             return null;

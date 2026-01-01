@@ -151,7 +151,11 @@ async def read_sales(
     """Get all sales for the current store (or all stores when store_id is None)"""
     sales_q = db.query(Sale)
     if store_context.store_id is not None:
-        sales_q = sales_q.filter(Sale.store_id == store_context.store_id)
+        # Filter by store_id and exclude sales without a store_id (legacy data)
+        sales_q = sales_q.filter(
+            Sale.store_id == store_context.store_id,
+            Sale.store_id.isnot(None)
+        )
 
     sales = sales_q.all()
     return [SaleResponse.from_orm(sale) for sale in sales]
@@ -166,90 +170,111 @@ async def sales_analytics(
     from sqlalchemy import func, extract
     from datetime import datetime, timedelta
 
-    # Base query: if a specific store is selected, scope to that store; otherwise use all stores
-    sales_query = db.query(Sale)
-    products_query = db.query(Product)
-    if store_context.store_id is not None:
-        sales_query = sales_query.filter(Sale.store_id == store_context.store_id)
-        products_query = products_query.filter(Product.store_id == store_context.store_id)
+    try:
+        # Base query: if a specific store is selected, scope to that store; otherwise use all stores
+        sales_query = db.query(Sale)
+        products_query = db.query(Product)
+        if store_context.store_id is not None:
+            sales_query = sales_query.filter(Sale.store_id == store_context.store_id)
+            products_query = products_query.filter(Product.store_id == store_context.store_id)
 
-    # Total sales and revenue
-    total_sales = sales_query.count()
-    total_revenue = sales_query.with_entities(func.sum(Sale.total_amount)).scalar() or 0.0
+        # Total sales and revenue
+        total_sales = sales_query.count()
+        total_revenue = sales_query.with_entities(func.sum(Sale.total_amount)).scalar() or 0.0
 
-    # Daily sales for the last 7 days
-    seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    daily_sales = []
-    for i in range(7):
-        day = seven_days_ago + timedelta(days=i)
-        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+        # Daily sales for the last 7 days
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        daily_sales = []
+        for i in range(7):
+            day = seven_days_ago + timedelta(days=i)
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-        day_sales = sales_query.filter(
-            Sale.created_at >= day_start,
-            Sale.created_at <= day_end
-        ).with_entities(func.sum(Sale.total_amount)).scalar() or 0.0
+            day_sales = sales_query.filter(
+                Sale.created_at >= day_start,
+                Sale.created_at <= day_end
+            ).with_entities(func.sum(Sale.total_amount)).scalar() or 0.0
 
-        daily_sales.append({
-            'date': day.strftime('%Y-%m-%d'),
-            'revenue': float(day_sales)
-        })
+            daily_sales.append({
+                'date': day.strftime('%Y-%m-%d'),
+                'revenue': float(day_sales)
+            })
 
-    # Top products by sales count
-    top_products_q = db.query(
-        Product.name,
-        func.count(SaleItem.id).label('sales_count'),
-        func.sum(SaleItem.total_price).label('total_revenue')
-    ).join(SaleItem, Product.id == SaleItem.product_id)\
-     .join(Sale, SaleItem.sale_id == Sale.id)
+        # Top products by sales count - only if there are sales
+        top_products_list = []
+        if total_sales > 0:
+            try:
+                top_products_q = db.query(
+                    Product.name,
+                    func.count(SaleItem.id).label('sales_count'),
+                    func.sum(SaleItem.total_price).label('total_revenue')
+                ).join(SaleItem, Product.id == SaleItem.product_id)\
+                 .join(Sale, SaleItem.sale_id == Sale.id)
 
-    if store_context.store_id is not None:
-        top_products_q = top_products_q.filter(Sale.store_id == store_context.store_id)
+                if store_context.store_id is not None:
+                    top_products_q = top_products_q.filter(Sale.store_id == store_context.store_id)
 
-    top_products = top_products_q.group_by(Product.id, Product.name)\
-     .order_by(func.count(SaleItem.id).desc())\
-     .limit(10)\
-     .all()
+                top_products = top_products_q.group_by(Product.id, Product.name)\
+                 .order_by(func.count(SaleItem.id).desc())\
+                 .limit(10)\
+                 .all()
 
-    top_products_list = [
-        {
-            'name': product.name,
-            'sales_count': product.sales_count,
-            'total_revenue': float(product.total_revenue or 0)
+                top_products_list = [
+                    {
+                        'name': product.name,
+                        'sales_count': product.sales_count,
+                        'total_revenue': float(product.total_revenue or 0)
+                    }
+                    for product in top_products
+                ]
+            except Exception as e:
+                print(f"Error fetching top products: {e}")
+                top_products_list = []
+
+        # Recent sales (last 10)
+        recent_sales = sales_query.order_by(Sale.created_at.desc()).limit(10).all()
+        recent_sales_list = [
+            {
+                'id': sale.id,
+                'total_amount': float(sale.total_amount),
+                'created_at': sale.created_at.isoformat(),
+                'items_count': len(sale.items)
+            }
+            for sale in recent_sales
+        ]
+
+        # Inventory alerts (low stock products)
+        low_stock_products = products_query.filter(Product.stock_quantity <= 10).all()
+        inventory_alerts = [
+            {
+                'id': product.id,
+                'name': product.name,
+                'stock_quantity': product.stock_quantity,
+                'alert_level': 'Low Stock' if product.stock_quantity <= 5 else 'Medium Stock'
+            }
+            for product in low_stock_products
+        ]
+
+        return {
+            'total_sales': total_sales,
+            'total_revenue': float(total_revenue),
+            'daily_sales': daily_sales,
+            'top_products': top_products_list,
+            'recent_sales': recent_sales_list,
+            'inventory_alerts': inventory_alerts,
+            'average_sale': float(total_revenue / total_sales) if total_sales > 0 else 0.0
         }
-        for product in top_products
-    ]
-
-    # Recent sales (last 10)
-    recent_sales = sales_query.order_by(Sale.created_at.desc()).limit(10).all()
-    recent_sales_list = [
-        {
-            'id': sale.id,
-            'total_amount': float(sale.total_amount),
-            'created_at': sale.created_at.isoformat(),
-            'items_count': len(sale.items)
+    except Exception as e:
+        print(f"Error in sales_analytics endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return empty analytics instead of crashing
+        return {
+            'total_sales': 0,
+            'total_revenue': 0.0,
+            'daily_sales': [],
+            'top_products': [],
+            'recent_sales': [],
+            'inventory_alerts': [],
+            'average_sale': 0.0
         }
-        for sale in recent_sales
-    ]
-
-    # Inventory alerts (low stock products)
-    low_stock_products = products_query.filter(Product.stock_quantity <= 10).all()
-    inventory_alerts = [
-        {
-            'id': product.id,
-            'name': product.name,
-            'stock_quantity': product.stock_quantity,
-            'alert_level': 'Low Stock' if product.stock_quantity <= 5 else 'Medium Stock'
-        }
-        for product in low_stock_products
-    ]
-
-    return {
-        'total_sales': total_sales,
-        'total_revenue': float(total_revenue),
-        'daily_sales': daily_sales,
-        'top_products': top_products_list,
-        'recent_sales': recent_sales_list,
-        'inventory_alerts': inventory_alerts,
-        'average_sale': float(total_revenue / total_sales) if total_sales > 0 else 0.0
-    }

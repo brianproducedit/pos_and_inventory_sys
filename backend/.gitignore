@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+.env
+*.env
+.env.*
+!.env.example
+
+# Database
+*.sqlite
+*.db
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Secrets - NEVER COMMIT
+secrets/
+*.pem
+*.key

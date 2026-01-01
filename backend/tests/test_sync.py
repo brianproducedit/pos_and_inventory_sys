@@ -382,3 +382,53 @@ def test_push_create_product_missing_store_returns_400(tmp_path, monkeypatch):
     r = client.post('/api/sync/push', json=payload, headers=headers)
     assert r.status_code == 400
     assert 'store_id' in r.json().get('detail', '')
+
+
+def test_get_initial_data(tmp_path, monkeypatch):
+    # Setup DB file
+    db_file = tmp_path / 'test_initial.db'
+    os.environ['DATABASE_URL'] = f"sqlite:///{db_file}"
+    os.environ['DEFAULT_SUPERADMIN_PASSWORD'] = 'testpw'
+
+    client = TestClient(app)
+
+    # Create test data
+    db = SessionLocal()
+    store = Store(name='Test Store', location='Test Location')
+    db.add(store)
+    db.commit()
+    db.refresh(store)
+
+    # Create products
+    p1 = Product(name='TestProd1', price=9.99, stock_quantity=10, store_id=store.id)
+    p2 = Product(name='TestProd2', price=19.99, stock_quantity=5, store_id=store.id, is_active=False)  # inactive
+    db.add(p1)
+    db.add(p2)
+    db.commit()
+    db.refresh(p1)
+    db.refresh(p2)
+
+    # Query initial data (authenticated)
+    token = get_token(client)
+    headers = {'Authorization': f'Bearer {token}'}
+    r = client.get("/api/sync/initial", headers=headers)
+    assert r.status_code == 200
+    data = r.json()
+
+    # Check structure
+    assert 'products' in data
+    assert 'stores' in data
+    assert 'server_time' in data
+
+    # Check products (should only include active ones)
+    products = data['products']
+    assert len(products) == 1  # Only active product
+    assert products[0]['name'] == 'TestProd1'
+    assert products[0]['price'] == 9.99
+    assert products[0]['store_id'] == store.id
+
+    # Check stores
+    stores = data['stores']
+    assert len(stores) == 1
+    assert stores[0]['name'] == 'Test Store'
+    assert stores[0]['location'] == 'Test Location'

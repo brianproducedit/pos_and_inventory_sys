@@ -5,11 +5,12 @@ class FakeSyncService {
   bool pushCalled = false;
   bool pullCalled = false;
 
-  Future<void> pushChanges() async {
+  Future<bool> syncPendingChanges() async {
     pushCalled = true;
+    return true;
   }
 
-  Future<void> pullChanges({required DateTime since}) async {
+  Future<void> pullChangesSinceSeq() async {
     pullCalled = true;
   }
 }

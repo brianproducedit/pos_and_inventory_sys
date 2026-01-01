@@ -113,11 +113,25 @@ void main() {
       'status': 'pending'
     });
 
-    // Fake HTTP client that returns 409 for the PUT
+    // Fake HTTP client that returns conflict for the batch push
     final client = http.Client();
     final fake = _FakeHttpClient((req) async {
-      if (req.method == 'PUT' && req.url.path.contains('/api/products/200')) {
-        return http.Response(jsonEncode({'detail': 'conflict'}), 409,
+      if (req.method == 'POST' && req.url.path == '/api/sync/push') {
+        // Return a conflict in the batch push response
+        return http.Response(
+            jsonEncode({
+              'applied': [],
+              'conflicts': [
+                {
+                  'resource_type': 'product',
+                  'id': 200,
+                  'message': 'conflict',
+                  'server_data': {'name': 'Server Version'}
+                }
+              ],
+              'id_map': {}
+            }),
+            200,
             headers: {'content-type': 'application/json'});
       }
       return http.Response('{}', 200);

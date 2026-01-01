@@ -269,12 +269,58 @@ class StoreIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     // Treat null or id==0 as 'All Stores'
     if (store == null || store?['id'] == 0) {
-      // Show explicit indicator for 'All Stores' (global view)
+      // Check role - only show All Stores for admin/superadmin
       final role = Provider.of<AuthProvider>(context, listen: false).role;
       final isAdminOrSuper = role == 'superadmin' || role == 'admin';
-      final label = isAdminOrSuper
-          ? 'Viewing: All Stores'
-          : 'Viewing: All Stores (limited access)';
+
+      if (!isAdminOrSuper) {
+        // For non-admin roles, show a message that they don't have global access
+        return Semantics(
+          label: 'Store-specific view only',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.outline,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Icon(
+                    Icons.store,
+                    color: Theme.of(context).colorScheme.onSurface,
+                    size: 12,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Store View',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // Show explicit indicator for 'All Stores' (global view)
+      final label = 'Viewing: All Stores';
 
       return Semantics(
         label: 'Viewing All Stores',

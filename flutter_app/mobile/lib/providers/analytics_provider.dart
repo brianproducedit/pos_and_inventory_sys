@@ -4,17 +4,22 @@ import 'package:flutter/foundation.dart';
 import 'package:mobile/services/time_service.dart';
 import '../services/sales_service.dart';
 import '../services/analytics_service.dart';
+import '../data/local/database_helper.dart';
 import 'store_provider.dart';
 import 'auth_provider.dart';
 
 class AnalyticsProvider with ChangeNotifier {
   final SalesService _salesService;
   final AnalyticsService _analyticsService;
+  final DatabaseHelper _db;
 
   AnalyticsProvider(
-      {SalesService? salesService, AnalyticsService? analyticsService})
+      {SalesService? salesService,
+      AnalyticsService? analyticsService,
+      DatabaseHelper? db})
       : _salesService = salesService ?? SalesService(),
-        _analyticsService = analyticsService ?? AnalyticsService();
+        _analyticsService = analyticsService ?? AnalyticsService(),
+        _db = db ?? DatabaseHelper();
 
   Map<String, dynamic> _salesData = {};
   List<Map<String, dynamic>> _recentSales = [];
@@ -90,7 +95,34 @@ class AnalyticsProvider with ChangeNotifier {
     _lastEventName = name;
     _lastEventPayload = payload;
     debugPrint('AnalyticsProvider.trackEvent: $name, $payload');
+
+    // Send analytics event offline-first
+    unawaited(_sendAnalyticsEvent(name, payload));
+
     notifyListeners();
+  }
+
+  Future<void> _sendAnalyticsEvent(
+      String eventName, Map<String, dynamic> payload) async {
+    try {
+      final userId = _authProvider?.user?.id;
+      final fromStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
+      final toStoreId = payload['to_store_id'] as int?;
+      final durationMs = payload['duration_ms'] as int?;
+      final metadata = payload['metadata'] as Map<String, dynamic>?;
+
+      await _analyticsService.createAnalyticsEvent(
+        eventName: eventName,
+        userId: userId,
+        fromStoreId: fromStoreId,
+        toStoreId: toStoreId,
+        durationMs: durationMs,
+        metadata: metadata,
+      );
+    } catch (e) {
+      debugPrint('Failed to send analytics event: $e');
+      // Analytics events are not critical - don't show errors to user
+    }
   }
 
   void setStoreProvider(StoreProvider storeProvider) {
@@ -149,17 +181,44 @@ class AnalyticsProvider with ChangeNotifier {
   }
 
   Future<void> loadAnalytics({int? storeId}) async {
+    // Prevent concurrent calls
+    if (_isLoading) return;
+
     _isLoading = true;
     _errorMessage = null;
     notifyListeners();
 
     try {
-      final data = await _salesService.getSalesAnalytics(storeId: storeId);
+      // Fetch server analytics with proper timeout
+      final data =
+          await _salesService.getSalesAnalytics(storeId: storeId).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () {
+          throw TimeoutException('Analytics request timed out');
+        },
+      );
+
+      // Fetch local offline stats to supplement server analytics
+      final localStats = await _db.getLocalTransactionStats(storeId: storeId);
+      final unsyncedCount = localStats['unsynced_count'] as int? ?? 0;
+      final unsyncedRevenue = localStats['unsynced_revenue'] as double? ?? 0.0;
+
+      // Combine server + unsynced local data for accurate totals
+      final serverSales = data['total_sales'] as int? ?? 0;
+      final serverRevenue = (data['total_revenue'] as num?)?.toDouble() ?? 0.0;
+
+      final totalSales = serverSales + unsyncedCount;
+      final totalRevenue = serverRevenue + unsyncedRevenue;
+
       _salesData = {
-        'total_sales': data['total_sales'] ?? 0,
-        'total_revenue': data['total_revenue'] ?? 0.0,
-        'average_sale': data['average_sale'] ?? 0.0,
+        'total_sales': totalSales,
+        'total_revenue': totalRevenue,
+        'average_sale': totalSales > 0 ? totalRevenue / totalSales : 0.0,
         'daily_sales': data['daily_sales'] ?? [],
+        // Track unsynced for UI display (optional)
+        'unsynced_sales': unsyncedCount,
+        'unsynced_revenue': unsyncedRevenue,
+        'is_offline': false,
       };
       _recentSales =
           List<Map<String, dynamic>>.from(data['recent_sales'] ?? []);
@@ -167,19 +226,47 @@ class AnalyticsProvider with ChangeNotifier {
           List<Map<String, dynamic>>.from(data['top_products'] ?? []);
       _inventoryAlerts =
           List<Map<String, dynamic>>.from(data['inventory_alerts'] ?? []);
+
+      debugPrint(
+          'AnalyticsProvider.loadAnalytics: server=$serverSales, unsynced=$unsyncedCount, total=$totalSales');
     } catch (e) {
-      _errorMessage = 'Failed to load analytics: $e';
+      final userFriendlyMessage = _getReadableErrorMessage(e);
       debugPrint('Error loading analytics: $e');
-      // Set default values if API fails
-      _salesData = {
-        'total_sales': 0,
-        'total_revenue': 0.0,
-        'average_sale': 0.0,
-        'daily_sales': [],
-      };
-      _recentSales = [];
-      _topProducts = [];
-      _inventoryAlerts = [];
+
+      // Fallback to local-only stats when server is unavailable
+      try {
+        final localStats = await _db.getLocalTransactionStats(storeId: storeId);
+        _salesData = {
+          'total_sales': localStats['total_transactions'] ?? 0,
+          'total_revenue': localStats['total_revenue'] ?? 0.0,
+          'average_sale': localStats['average_transaction'] ?? 0.0,
+          'daily_sales': [],
+          'unsynced_sales': localStats['unsynced_count'] ?? 0,
+          'unsynced_revenue': localStats['unsynced_revenue'] ?? 0.0,
+          'is_offline': true, // Mark as offline-only data
+        };
+        _recentSales = [];
+        _topProducts = [];
+        _inventoryAlerts = [];
+        // Set a softer error message since we have fallback data
+        _errorMessage = userFriendlyMessage;
+        _errorMessage = null;
+        debugPrint(
+            'AnalyticsProvider.loadAnalytics: using offline fallback data');
+      } catch (localError) {
+        debugPrint(
+            'AnalyticsProvider.loadAnalytics: local fallback also failed: $localError');
+        // Set default values if both API and local fail
+        _salesData = {
+          'total_sales': 0,
+          'total_revenue': 0.0,
+          'average_sale': 0.0,
+          'daily_sales': [],
+        };
+        _recentSales = [];
+        _topProducts = [];
+        _inventoryAlerts = [];
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -225,12 +312,34 @@ class AnalyticsProvider with ChangeNotifier {
       _putCache(key, data);
       return data;
     } catch (e) {
-      _errorMessage = 'Failed to load analytics summary: $e';
+      _errorMessage = _getReadableErrorMessage(e);
       debugPrint('Error loading analytics summary: $e');
       return {};
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// Convert technical errors to user-friendly messages
+  String _getReadableErrorMessage(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+
+    if (errorStr.contains('connection closed') ||
+        errorStr.contains('closed before') ||
+        errorStr.contains('connection reset')) {
+      return 'Connection lost. Showing cached data.';
+    }
+    if (errorStr.contains('timeout') || errorStr.contains('timed out')) {
+      return 'Server slow to respond. Showing cached data.';
+    }
+    if (errorStr.contains('socket') || errorStr.contains('network')) {
+      return 'Network error. Showing cached data.';
+    }
+    if (errorStr.contains('offline')) {
+      return 'You are offline. Showing local data.';
+    }
+
+    return 'Unable to refresh. Showing cached data.';
   }
 }

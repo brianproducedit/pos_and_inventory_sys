@@ -21,7 +21,7 @@ class FakeProductRepo implements ProductRepository {
   }
 
   @override
-  Future<List<Product>> getAllProducts() async {
+  Future<List<Product>> getAllProducts({int? storeId}) async {
     getAllCalled = true;
     return [Product(id: 1, name: 'A', sku: 'A1', price: 1.0, stockQuantity: 2)];
   }

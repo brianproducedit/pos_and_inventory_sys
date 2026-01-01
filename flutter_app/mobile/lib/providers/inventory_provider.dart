@@ -7,19 +7,23 @@ import '../data/local/database_helper.dart';
 import '../domain/models/product.dart' as domain_product;
 import 'store_provider.dart';
 import 'auth_provider.dart';
+import 'sync_provider.dart';
 
 class InventoryProvider with ChangeNotifier {
   final ProductService _productService;
   final ProductRepository? _productRepository;
   final DatabaseHelper? _dbHelper;
+  SyncProvider? _syncProvider;
 
   InventoryProvider(
       {ProductService? productService,
       ProductRepository? productRepository,
-      DatabaseHelper? dbHelper})
+      DatabaseHelper? dbHelper,
+      SyncProvider? syncProvider})
       : _productService = productService ?? ProductService(),
         _productRepository = productRepository,
-        _dbHelper = dbHelper;
+        _dbHelper = dbHelper,
+        _syncProvider = syncProvider;
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _lowStockAlerts = [];
@@ -97,6 +101,10 @@ class InventoryProvider with ChangeNotifier {
     _authProvider = authProvider;
   }
 
+  void setSyncProvider(SyncProvider syncProvider) {
+    _syncProvider = syncProvider;
+  }
+
   Future<void> loadProducts() async {
     debugPrint('InventoryProvider.loadProducts: start');
     _isLoading = true;
@@ -106,14 +114,17 @@ class InventoryProvider with ChangeNotifier {
     try {
       final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
       if (_productRepository != null) {
-        final prods = await _productRepository!.getAllProducts();
+        final prods =
+            await _productRepository!.getAllProducts(storeId: storeId);
         debugPrint(
             'InventoryProvider.loadProducts: got ${prods.length} products from repo');
         final maps = prods.map((p) => p.toMap()).toList();
+        // For non-superadmin users, show all products from current store (including locally added ones without server_id)
+        // For superadmin, show only synced products (server_id != null) to avoid showing local-only products from other stores
         if (_authProvider?.role == 'superadmin') {
-          _products = maps;
+          _products = maps.where((m) => m['server_id'] != null).toList();
         } else {
-          _products = maps.where((m) => m['store_id'] == storeId).toList();
+          _products = maps;
         }
       } else {
         // Use existing ProductService
@@ -166,6 +177,8 @@ class InventoryProvider with ChangeNotifier {
         ));
         // Reload products to reflect new row
         await loadProducts();
+        // Trigger sync to push changes to server
+        unawaited(_syncProvider?.syncNow());
       } else {
         final newProduct =
             await _productService.createProduct(productData, storeId: storeId);
@@ -188,6 +201,8 @@ class InventoryProvider with ChangeNotifier {
         await _productRepository!.updateProduct(productId, productData);
         // reload to reflect update
         await loadProducts();
+        // Trigger sync to push changes to server
+        unawaited(_syncProvider?.syncNow());
       } else {
         final updatedProduct = await _productService
             .updateProduct(productId, productData, storeId: storeId);
@@ -210,6 +225,8 @@ class InventoryProvider with ChangeNotifier {
       if (_productRepository != null) {
         await _productRepository!.deleteProduct(productId);
         await loadProducts();
+        // Trigger sync to push changes to server
+        unawaited(_syncProvider?.syncNow());
       } else {
         final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
         await _productService.deleteProduct(productId, storeId: storeId);
@@ -272,6 +289,21 @@ class InventoryProvider with ChangeNotifier {
   void toggleShowInactiveProducts() {
     _showInactiveProducts = !_showInactiveProducts;
     loadAllProducts(includeInactive: _showInactiveProducts);
+  }
+
+  Future<int> cleanupOrphanedProducts() async {
+    if (_dbHelper == null) return 0;
+    try {
+      final removedCount = await _dbHelper!.cleanupOrphanedProducts();
+      // Reload products to reflect the cleanup
+      await loadProducts();
+      return removedCount;
+    } catch (e) {
+      _errorMessage = 'Failed to cleanup orphaned products: $e';
+      debugPrint('Error cleaning up orphaned products: $e');
+      notifyListeners();
+      return 0;
+    }
   }
 
   @override

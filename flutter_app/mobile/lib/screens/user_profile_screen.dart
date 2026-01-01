@@ -3,6 +3,7 @@ import 'package:mobile/widgets/primary_dialog.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_profile_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/store_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
@@ -402,6 +403,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onPressed: () {
                 Navigator.of(context).pop();
                 context.read<AuthProvider>().logout();
+                // Reset store provider data
+                context.read<StoreProvider>().resetUserData();
                 Navigator.of(context)
                     .pushNamedAndRemoveUntil('/login', (route) => false);
               },

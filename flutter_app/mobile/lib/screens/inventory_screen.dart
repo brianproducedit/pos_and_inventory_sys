@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
@@ -62,6 +63,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
       }
       inventoryProvider.setAuthProvider(authProvider);
       inventoryProvider.setStoreProvider(storeProvider);
+      inventoryProvider.setSyncProvider(context.read<SyncProvider>());
 
       // If a non-admin is on All Stores, fallback to first myStore when available
       if (storeProvider.currentStore == null &&
@@ -176,11 +178,47 @@ class _InventoryScreenState extends State<InventoryScreen> {
     }
   }
 
+  Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
+    final inventoryProvider = context.read<InventoryProvider>();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Product'),
+        content: Text(
+            'Are you sure you want to permanently delete "${product['name'] ?? 'this product'}"? This action cannot be undone.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+
+    try {
+      await inventoryProvider.deleteProduct(product['id']);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content:
+                Text('Product "${product['name'] ?? 'Product'}" deleted')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting product: $e')));
+      }
+    }
+  }
+
   void _clearProductSelection() {
     setState(() => _selectedProductIds.clear());
   }
 
-  /// Open the product referenced by a low-stock alert.
   /// Attempts to resolve a full product map from current products by id or name,
   /// falls back to a minimal product map if necessary, then navigates to
   /// the edit product screen after closing the alert dialog.
@@ -278,7 +316,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
               children: [
                 StoreIndicator(
                     store: context.watch<StoreProvider>().currentStore),
-                Row(
+                Wrap(
+                  spacing: 1.0, // Reduced spacing between buttons
                   children: [
                     if (context.watch<AuthProvider>().role == 'superadmin' ||
                         context.watch<AuthProvider>().role == 'admin')
@@ -295,6 +334,46 @@ class _InventoryScreenState extends State<InventoryScreen> {
                       icon: const Icon(Icons.refresh, color: Colors.white),
                       onPressed: _loadProducts,
                     ),
+                    // IconButton(
+                    //   icon: const Icon(Icons.cleaning_services,
+                    //       color: Colors.white),
+                    //   tooltip: 'Clean up orphaned products',
+                    //   onPressed: () async {
+                    //     final confirmed = await showDialog<bool>(
+                    //       context: context,
+                    //       builder: (context) => AlertDialog(
+                    //         title: const Text('Clean Up Orphaned Products'),
+                    //         content: const Text(
+                    //             'This will remove products that exist only locally and have never been synced to the server. '
+                    //             'This action cannot be undone. Continue?'),
+                    //         actions: [
+                    //           TextButton(
+                    //             onPressed: () =>
+                    //                 Navigator.of(context).pop(false),
+                    //             child: const Text('Cancel'),
+                    //           ),
+                    //           TextButton(
+                    //             onPressed: () =>
+                    //                 Navigator.of(context).pop(true),
+                    //             child: const Text('Clean Up'),
+                    //           ),
+                    //         ],
+                    //       ),
+                    //     );
+
+                    //     if (confirmed == true) {
+                    //       final removedCount =
+                    //           await inventoryProvider.cleanupOrphanedProducts();
+                    //       if (mounted) {
+                    //         ScaffoldMessenger.of(context).showSnackBar(
+                    //           SnackBar(
+                    //               content: Text(
+                    //                   'Removed $removedCount orphaned products')),
+                    //         );
+                    //       }
+                    //     }
+                    //   },
+                    // ),
                     IconButton(
                       icon: const Icon(Icons.add, color: Colors.white),
                       onPressed: () {
@@ -344,7 +423,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     child: SingleChildScrollView(
                                       scrollDirection: Axis.horizontal,
                                       child: Row(
-                                        mainAxisSize: MainAxisSize.max,
+                                        mainAxisSize: MainAxisSize.min,
                                         mainAxisAlignment:
                                             MainAxisAlignment.end,
                                         crossAxisAlignment:
@@ -797,12 +876,20 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                                       product),
                                                         ),
                                                       );
+                                                    } else if (value ==
+                                                        'delete') {
+                                                      _confirmDeleteProduct(
+                                                          product);
                                                     }
                                                   },
                                                   itemBuilder: (context) => [
                                                     const PopupMenuItem(
                                                       value: 'edit',
                                                       child: Text('Edit'),
+                                                    ),
+                                                    const PopupMenuItem(
+                                                      value: 'delete',
+                                                      child: Text('Delete'),
                                                     ),
                                                   ],
                                                 ),

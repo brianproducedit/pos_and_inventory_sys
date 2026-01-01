@@ -70,9 +70,9 @@ class InventoryProviderV2 with ChangeNotifier {
   /// Subscribe to products stream from local database
   void _subscribeToProducts() {
     _productsSubscription?.cancel();
-    
+
     final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
-    
+
     // Superadmin sees all products, others see store-filtered products
     final stream = (_authProvider?.role == 'superadmin')
         ? _productRepo.watchAll()
@@ -99,9 +99,9 @@ class InventoryProviderV2 with ChangeNotifier {
   /// Subscribe to low stock alerts stream
   void _subscribeToLowStock() {
     _lowStockSubscription?.cancel();
-    
+
     final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
-    
+
     final stream = _productRepo.watchLowStock(
       threshold: 5,
       storeId: storeId,
@@ -136,7 +136,8 @@ class InventoryProviderV2 with ChangeNotifier {
     try {
       final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
       if (storeId == null) {
-        throw Exception('No store selected. Please select a store before adding a product.');
+        throw Exception(
+            'No store selected. Please select a store before adding a product.');
       }
 
       await _productRepo.create(
@@ -147,7 +148,7 @@ class InventoryProviderV2 with ChangeNotifier {
         stockQuantity: stockQuantity,
         storeId: storeId,
       );
-      
+
       // No need to manually reload - stream will update automatically
       debugPrint('InventoryProviderV2: Product created successfully');
     } catch (e) {
@@ -179,7 +180,7 @@ class InventoryProviderV2 with ChangeNotifier {
         stockQuantity: stockQuantity,
         isActive: isActive,
       );
-      
+
       debugPrint('InventoryProviderV2: Product updated successfully');
     } catch (e) {
       _errorMessage = 'Failed to update product: $e';

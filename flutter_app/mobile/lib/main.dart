@@ -122,20 +122,26 @@ class MyApp extends StatelessWidget {
               create: (context) => TransactionRepositoryImpl(
                   db: context.read<DatabaseHelper>(),
                   api: context.read<PostgresApiService>())),
-          
+
           // V2 Offline-First Repositories (use Drift database)
           Provider<ProductRepository_v2>(
-              create: (context) => ProductRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  ProductRepository_v2(context.read<AppDatabase>())),
           Provider<StoreRepository_v2>(
-              create: (context) => StoreRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  StoreRepository_v2(context.read<AppDatabase>())),
           Provider<UserRepository_v2>(
-              create: (context) => UserRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  UserRepository_v2(context.read<AppDatabase>())),
           Provider<SaleRepository_v2>(
-              create: (context) => SaleRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  SaleRepository_v2(context.read<AppDatabase>())),
           Provider<InventoryRepository_v2>(
-              create: (context) => InventoryRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  InventoryRepository_v2(context.read<AppDatabase>())),
           Provider<SettingsRepository_v2>(
-              create: (context) => SettingsRepository_v2(context.read<AppDatabase>())),
+              create: (context) =>
+                  SettingsRepository_v2(context.read<AppDatabase>())),
 
           // SyncProvider must be created before providers that depend on it
           ChangeNotifierProvider(create: (_) => SyncProvider()),
@@ -153,7 +159,7 @@ class MyApp extends StatelessWidget {
                     dbHelper: context.read<DatabaseHelper>(),
                     syncProvider: syncProvider),
           ),
-          
+
           // V2 UI-level providers (offline-first with Drift)
           ChangeNotifierProvider<InventoryProviderV2>(
             create: (context) => InventoryProviderV2(

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 // import 'package:flutter/foundation.dart';
 import 'package:mobile/widgets/low_stock_panel.dart';
 import 'package:provider/provider.dart';
-import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/sync_provider.dart';
@@ -31,39 +31,29 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _searchQuery = '';
   Timer? _searchDebounce;
 
-  Future<void> _loadProducts() async {
-    final inventoryProvider = context.read<InventoryProvider>();
-    final authProvider = context.read<AuthProvider>();
-
-    if (authProvider.role == 'superadmin') {
-      await inventoryProvider.loadAllProducts(
-          includeInactive: inventoryProvider.showInactiveProducts);
-    } else {
-      await inventoryProvider.loadProducts();
-    }
-  }
+  // V2: No need for manual loading - streams handle it automatically
 
   @override
   void initState() {
     super.initState();
-    // Load products when screen initializes
+    // Initialize providers when screen loads (V2: streams handle data loading)
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final inventoryProvider = context.read<InventoryProvider>();
+      final inventoryProvider = context.read<InventoryProviderV2>();
       final authProvider = context.read<AuthProvider>();
       final storeProvider = context.read<StoreProvider>();
 
-      // Ensure store provider is initialized and pass to inventory provider
+      // Ensure store provider is initialized
       try {
         if (!storeProvider.isInitialized) {
-          // Start init in background so UI doesn't block and tests don't get timer leaks
           unawaited(storeProvider.initialize());
         }
       } catch (e) {
         debugPrint('InventoryScreen: store init skipped: $e');
       }
+
+      // Set up providers (V2: this starts the streams)
       inventoryProvider.setAuthProvider(authProvider);
       inventoryProvider.setStoreProvider(storeProvider);
-      inventoryProvider.setSyncProvider(context.read<SyncProvider>());
 
       // If a non-admin is on All Stores, fallback to first myStore when available
       if (storeProvider.currentStore == null &&
@@ -74,14 +64,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
         }
       }
 
-      // Load products based on user role
-      if (authProvider.role == 'superadmin') {
-        // Superadmin can see all products across stores
-        inventoryProvider.loadAllProducts(includeInactive: false);
-      } else {
-        // Regular users see products filtered by current store
-        inventoryProvider.loadProducts();
-      }
+      // V2: No manual loading needed - streams auto-populate products
     });
   }
 
@@ -93,14 +76,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _confirmBulkToggleProductStatus(bool activate) async {
-    final inventoryProvider = context.read<InventoryProvider>();
+    final inventoryProvider = context.read<InventoryProviderV2>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Change Product Status'),
         content: Text(
             'Are you sure you want to ${activate ? 'activate' : 'deactivate'} ${_selectedProductIds.length} selected products?'),
-        actions: [
+        actions: [V2
           TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel')),
@@ -136,7 +119,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _confirmBulkDeleteProducts() async {
-    final inventoryProvider = context.read<InventoryProvider>();
+    final inventoryProvider = context.read<InventoryProviderV2>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -179,7 +162,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
-    final inventoryProvider = context.read<InventoryProvider>();
+    final inventoryProvider = context.read<InventoryProviderV2>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -223,7 +206,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   /// falls back to a minimal product map if necessary, then navigates to
   /// the edit product screen after closing the alert dialog.
   void _openProductFromAlert(Map<String, dynamic> alert) {
-    final inventoryProvider = context.read<InventoryProvider>();
+    final inventoryProvider = context.read<InventoryProviderV2>();
 
     final int? productId = (alert['id'] ?? alert['product_id']) as int?;
 
@@ -266,7 +249,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   /// product name (matched by id or exact name) and falling back to the
   /// alert's provided name.
   String _displayNameForAlert(Map<String, dynamic> alert) {
-    final inventoryProvider = context.read<InventoryProvider>();
+    final inventoryProvider = context.read<InventoryProviderV2>();
     final int? pid = (alert['id'] ?? alert['product_id']) as int?;
 
     if (pid != null) {

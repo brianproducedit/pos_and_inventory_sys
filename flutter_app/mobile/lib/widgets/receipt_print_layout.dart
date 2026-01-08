@@ -34,7 +34,7 @@ class PrinterFriendlyReceipt extends StatelessWidget {
                     '${it['qty'] ?? 1} x ${it['name']} - ${it['price'] ?? ''}'),
               )),
           const Divider(height: 24),
-          Text('Total: \$${total}',
+          Text('Total: \$$total',
               style:
                   const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         ],

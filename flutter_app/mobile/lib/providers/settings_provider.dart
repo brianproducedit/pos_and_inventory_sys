@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../data/sync/postgres_sync_service.dart';
-import '../services/settings_service.dart';
-import 'auth_provider.dart';
+import '../data/repositories/settings_repository_v2.dart';
 
 class StoreSettings {
   final String? businessName;
@@ -93,12 +91,10 @@ class SystemSettings {
 }
 
 class SettingsProvider with ChangeNotifier {
-  final SettingsService _settingsService;
+  final SettingsRepository _settingsRepository;
 
-  SettingsProvider(
-      {required AuthProvider authProvider, PostgresSyncService? syncService})
-      : _settingsService = SettingsService(
-            authProvider: authProvider, syncService: syncService);
+  SettingsProvider({required SettingsRepository settingsRepository})
+      : _settingsRepository = settingsRepository;
 
   StoreSettings? _storeSettings;
   UserSettings? _userSettings;
@@ -121,14 +117,13 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _settingsService.getStoreSettings();
       _storeSettings = StoreSettings(
-        businessName: data['business_name'],
-        address: data['address'],
-        phone: data['phone'],
-        email: data['email'],
-        taxNumber: data['tax_number'],
-        receiptFooter: data['receipt_footer'],
+        businessName: await _settingsRepository.get('store.business_name'),
+        address: await _settingsRepository.get('store.address'),
+        phone: await _settingsRepository.get('store.phone'),
+        email: await _settingsRepository.get('store.email'),
+        taxNumber: await _settingsRepository.get('store.tax_number'),
+        receiptFooter: await _settingsRepository.get('store.receipt_footer'),
       );
     } catch (e) {
       _error = e.toString();
@@ -145,7 +140,26 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _settingsService.updateStoreSettings(settings);
+      if (settings.businessName != null) {
+        await _settingsRepository.set(
+            'store.business_name', settings.businessName!);
+      }
+      if (settings.address != null) {
+        await _settingsRepository.set('store.address', settings.address!);
+      }
+      if (settings.phone != null) {
+        await _settingsRepository.set('store.phone', settings.phone!);
+      }
+      if (settings.email != null) {
+        await _settingsRepository.set('store.email', settings.email!);
+      }
+      if (settings.taxNumber != null) {
+        await _settingsRepository.set('store.tax_number', settings.taxNumber!);
+      }
+      if (settings.receiptFooter != null) {
+        await _settingsRepository.set(
+            'store.receipt_footer', settings.receiptFooter!);
+      }
       _storeSettings = settings;
       _isLoading = false;
       notifyListeners();
@@ -165,11 +179,11 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _settingsService.getUserSettings();
       _userSettings = UserSettings(
-        theme: data['theme'] ?? 'light',
-        language: data['language'] ?? 'en',
-        notificationsEnabled: data['notifications_enabled'] ?? true,
+        theme: await _settingsRepository.getOrDefault('user.theme', 'light'),
+        language: await _settingsRepository.getOrDefault('user.language', 'en'),
+        notificationsEnabled: await _settingsRepository
+            .getBool('user.notifications_enabled', defaultValue: true),
       );
     } catch (e) {
       _error = e.toString();
@@ -186,7 +200,10 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _settingsService.updateUserSettings(settings);
+      await _settingsRepository.set('user.theme', settings.theme);
+      await _settingsRepository.set('user.language', settings.language);
+      await _settingsRepository.setBool(
+          'user.notifications_enabled', settings.notificationsEnabled);
       _userSettings = settings;
       _isLoading = false;
       notifyListeners();
@@ -206,7 +223,7 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final data = await _settingsService.getSystemSettings();
+      final data = await _settingsRepository.getByPrefix('system.');
       _systemSettings = SystemSettings(settings: data);
     } catch (e) {
       _error = e.toString();
@@ -223,7 +240,11 @@ class SettingsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      await _settingsService.updateSystemSetting(key, value);
+      if (value != null) {
+        await _settingsRepository.set('system.$key', value);
+      } else {
+        await _settingsRepository.delete('system.$key');
+      }
       if (_systemSettings != null) {
         final updatedSettings =
             Map<String, String?>.from(_systemSettings!.settings);

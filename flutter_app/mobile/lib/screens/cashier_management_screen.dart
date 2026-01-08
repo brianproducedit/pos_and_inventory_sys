@@ -5,12 +5,14 @@ import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/user_management_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
+import 'package:mobile/db/app_database.dart';
 
 class CashierManagementScreen extends StatefulWidget {
   const CashierManagementScreen({super.key});
@@ -37,6 +39,13 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     debugPrint('CashierManagementScreen: _loadData start');
     final userManagementProvider = context.read<UserManagementProvider>();
     final storeProvider = context.read<StoreProvider>();
+    final syncProvider = context.read<SyncProvider>();
+
+    // Set up sync completion callback to refresh users after sync
+    syncProvider.onSyncComplete = () async {
+      debugPrint('📥 CashierManagementScreen: Sync complete - reloading users');
+      userManagementProvider.loadUsers();
+    };
 
     // Ensure store provider is initialized first so server-declared "All Stores"
     // selection is restored before we load users/stores.
@@ -56,7 +65,7 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     unawaited(userManagementProvider.loadUsers());
 
     // Load stores for superadmin to show store names (background)
-    if (context.read<AuthProvider>().role == 'superadmin') {
+    if (context.read<AuthProvider>().role == UserRole.superadmin) {
       unawaited(storeProvider.loadStores());
     }
   }
@@ -68,7 +77,8 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
     final storeProvider = context.watch<StoreProvider>();
 
     // Only admin and superadmin can access this screen
-    if (authProvider.role != 'admin' && authProvider.role != 'superadmin') {
+    if (authProvider.role != UserRole.admin &&
+        authProvider.role != UserRole.superadmin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -77,12 +87,14 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
       );
     }
 
-    // Filter cashiers based on role
-    final cashiers = authProvider.role == 'superadmin'
-        ? userManagementProvider.cashiers // Superadmin sees all cashiers
-        : userManagementProvider.cashiers
-            .where((cashier) => cashier['store_id'] == authProvider.storeId)
-            .toList(); // Admin sees only cashiers from their store
+    // Filter cashiers based on current store selection
+    final currentStoreId = storeProvider.currentStore?['id'];
+    final cashiers = currentStoreId != null
+        ? userManagementProvider.cashiers
+            .where((cashier) => cashier['store_id'] == currentStoreId)
+            .toList()
+        : userManagementProvider
+            .cashiers; // Fallback to all if no store selected
 
     return Scaffold(
       appBar: AppBar(
@@ -96,7 +108,8 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
         ),
         actions: [
           // Mirror Admin screen: use quick action for switching stores
-          if (authProvider.role == 'superadmin' || authProvider.role == 'admin')
+          if (authProvider.role == UserRole.superadmin ||
+              authProvider.role == UserRole.admin)
             const StoreQuickAction(),
           IconButton(
             icon: const Icon(Icons.add),
@@ -343,7 +356,8 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                                   Text('Username: ${cashier['username']}'),
                                   Text(
                                       'Status: ${cashier['is_active'] == true ? 'Active' : 'Inactive'}'),
-                                  if (authProvider.role == 'superadmin') ...[
+                                  if (authProvider.role ==
+                                      UserRole.superadmin) ...[
                                     Text(
                                         'Store: ${_getStoreName(cashier['store_id'], storeProvider.stores)}'),
                                   ],
@@ -478,20 +492,49 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                   label: 'Full Name',
                   hint: 'Enter cashier full name',
                 ),
-                if (userRole == 'superadmin' || userRole == 'admin') ...[
+                if (userRole == UserRole.superadmin ||
+                    userRole == UserRole.admin) ...[
                   const SizedBox(height: 16),
+                  // For offline-first: show all active stores
+                  // ALWAYS use local id for database FK constraint
                   DropdownButtonFormField<int>(
                     initialValue: selectedStoreId,
                     decoration: const InputDecoration(
                       labelText: 'Assign to Store',
                       hintText: 'Select a store',
                     ),
-                    items: storeProvider.stores.map((store) {
+                    items: storeProvider.stores
+                        .where((store) => store['is_active'] == true)
+                        .map((store) {
                       final name =
                           (store['name'] ?? 'Unnamed Store').toString();
+                      final serverId = store['server_id'] as int?;
+                      final localId = store['id'] as int;
+                      // ALWAYS use local id for the value - needed for FK constraint
+                      final isPending = serverId == null;
                       return DropdownMenuItem<int>(
-                        value: store['id'],
-                        child: Text(name),
+                        value: localId, // Use LOCAL id for database FK
+                        child: Row(
+                          children: [
+                            Text(name),
+                            if (isPending) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.shade100,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Pending Sync',
+                                  style: TextStyle(
+                                      fontSize: 10, color: Colors.orange),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       );
                     }).toList(),
                     onChanged: (value) {
@@ -500,6 +543,15 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                       });
                     },
                   ),
+                  const SizedBox(height: 8),
+                  if (storeProvider.stores
+                      .where((s) => s['is_active'] == true)
+                      .where((s) => s['server_id'] == null)
+                      .isNotEmpty)
+                    const Text(
+                      'Stores marked "Pending Sync" will sync before the cashier. Both will be available once online.',
+                      style: TextStyle(fontSize: 12, color: Colors.orange),
+                    ),
                 ],
               ],
             ),
@@ -541,6 +593,13 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                     'role': 'cashier',
                     'store_id': selectedStoreId,
                   });
+
+                  // Trigger immediate sync after creating user
+                  debugPrint(
+                      '🔄 User created locally, triggering immediate sync...');
+                  if (context.mounted) {
+                    context.read<SyncProvider>().sync();
+                  }
 
                   if (context.mounted) {
                     Navigator.of(context).pop();
@@ -628,7 +687,9 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
                   },
                 );
 
+                // Trigger sync after update
                 if (context.mounted) {
+                  context.read<SyncProvider>().sync();
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -662,7 +723,9 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
         {'is_active': !(cashier['is_active'] ?? true)},
       );
 
+      // Trigger sync after toggle
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -837,7 +900,9 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
       for (final id in _selectedCashierIds.toList()) {
         await userManagementProvider.updateUser(id, {'is_active': activate});
       }
+      // Trigger sync after bulk update
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Bulk status update completed')));
       }
@@ -880,7 +945,9 @@ class _CashierManagementScreenState extends State<CashierManagementScreen> {
       for (final id in _selectedCashierIds.toList()) {
         await userManagementProvider.hardDeleteUser(id);
       }
+      // Trigger sync after bulk delete
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Selected cashiers deleted')));
       }

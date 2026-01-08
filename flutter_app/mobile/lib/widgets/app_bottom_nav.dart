@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/db/app_database.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 
 class AppBottomNav extends StatelessWidget {
   final String currentRoute;
@@ -22,7 +24,7 @@ class AppBottomNav extends StatelessWidget {
                 ? null
                 : () {
                     try {
-                      Navigator.of(context).pushReplacementNamed('/home');
+                      context.replaceNamedSmooth('/home');
                     } catch (e) {
                       debugPrint('Navigation to /home failed: $e');
                     }
@@ -30,15 +32,14 @@ class AppBottomNav extends StatelessWidget {
           ),
 
           // Inventory (admin/superadmin only)
-          if (role == 'superadmin' || role == 'admin')
+          if (role == UserRole.superadmin || role == UserRole.admin)
             IconButton(
               icon: const Icon(Icons.inventory),
               onPressed: currentRoute == '/inventory'
                   ? null
                   : () {
                       try {
-                        Navigator.of(context)
-                            .pushReplacementNamed('/inventory');
+                        context.replaceNamedSmooth('/inventory');
                       } catch (e) {
                         debugPrint('Navigation to /inventory failed: $e');
                       }
@@ -52,7 +53,7 @@ class AppBottomNav extends StatelessWidget {
                 ? null
                 : () {
                     try {
-                      Navigator.of(context).pushReplacementNamed('/pos');
+                      context.replaceNamedSmooth('/pos');
                     } catch (e) {
                       debugPrint('Navigation to /pos failed: $e');
                     }
@@ -60,15 +61,14 @@ class AppBottomNav extends StatelessWidget {
           ),
 
           // Analytics (admin/superadmin only)
-          if (role == 'superadmin' || role == 'admin')
+          if (role == UserRole.superadmin || role == UserRole.admin)
             IconButton(
               icon: const Icon(Icons.analytics),
               onPressed: currentRoute == '/analytics'
                   ? null
                   : () {
                       try {
-                        Navigator.of(context)
-                            .pushReplacementNamed('/analytics');
+                        context.replaceNamedSmooth('/analytics');
                       } catch (e) {
                         debugPrint('Navigation to /analytics failed: $e');
                       }
@@ -76,15 +76,14 @@ class AppBottomNav extends StatelessWidget {
             ),
 
           // Audit Logs (admin/superadmin only)
-          if (role == 'superadmin' || role == 'admin')
+          if (role == UserRole.superadmin || role == UserRole.admin)
             IconButton(
               icon: const Icon(Icons.history),
               onPressed: currentRoute == '/audit_logs'
                   ? null
                   : () {
                       try {
-                        Navigator.of(context)
-                            .pushReplacementNamed('/audit_logs');
+                        context.replaceNamedSmooth('/audit_logs');
                       } catch (e) {
                         debugPrint('Navigation to /audit_logs failed: $e');
                       }

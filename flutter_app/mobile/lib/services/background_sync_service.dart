@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:drift/drift.dart' as drift;
 import '../db/app_database.dart';
@@ -15,10 +16,10 @@ class BackgroundSyncService {
     // Initialize WorkManager
     await Workmanager().initialize(
       callbackDispatcher,
-      isInDebugMode: false, // Set to true for debugging
+      // isInDebugMode is deprecated and has no effect
     );
 
-    print('BackgroundSyncService: WorkManager initialized');
+    debugPrint('BackgroundSyncService: WorkManager initialized');
   }
 
   /// Register periodic sync task
@@ -39,14 +40,14 @@ class BackgroundSyncService {
       backoffPolicyDelay: const Duration(minutes: 1),
     );
 
-    print(
+    debugPrint(
         'BackgroundSyncService: Periodic sync registered (every ${frequency.inMinutes} minutes)');
   }
 
   /// Cancel periodic sync
   static Future<void> cancelPeriodicSync() async {
     await Workmanager().cancelByUniqueName(uniqueTaskName);
-    print('BackgroundSyncService: Periodic sync cancelled');
+    debugPrint('BackgroundSyncService: Periodic sync cancelled');
   }
 
   /// Trigger immediate one-time sync
@@ -59,7 +60,7 @@ class BackgroundSyncService {
       ),
     );
 
-    print('BackgroundSyncService: Immediate sync triggered');
+    debugPrint('BackgroundSyncService: Immediate sync triggered');
   }
 
   /// Check if periodic sync is enabled
@@ -75,11 +76,13 @@ class BackgroundSyncService {
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    print('BackgroundSync: Starting background sync task: $task');
+    debugPrint('BackgroundSync: Starting background sync task: $task');
 
     try {
       // Initialize database and services for background isolate
+      // PRAGMA configuration (WAL mode, busy timeout) happens automatically during DB opening
       final db = AppDatabase();
+
       final apiClient = ApiClient();
       final syncWorker = SyncWorker(
         db: db,
@@ -92,10 +95,10 @@ void callbackDispatcher() {
       // Perform sync
       await syncWorker.triggerSync();
 
-      print('BackgroundSync: Background sync completed successfully');
+      debugPrint('BackgroundSync: Background sync completed successfully');
       return Future.value(true);
     } catch (e) {
-      print('BackgroundSync: Background sync failed: $e');
+      debugPrint('BackgroundSync: Background sync failed: $e');
       // Return false to signal failure - WorkManager will retry with backoff
       return Future.value(false);
     }

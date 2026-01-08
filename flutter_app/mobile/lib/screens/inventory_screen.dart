@@ -1,17 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 // import 'package:flutter/foundation.dart';
 import 'package:mobile/widgets/low_stock_panel.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
-import 'package:mobile/screens/edit_product_screen.dart';
 import 'package:mobile/db/app_database.dart';
 
 class InventoryScreen extends StatefulWidget {
@@ -57,8 +58,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
       // If a non-admin is on All Stores, fallback to first myStore when available
       if (storeProvider.currentStore == null &&
-          authProvider.role != 'superadmin' &&
-          authProvider.role != 'admin') {
+          authProvider.role != UserRole.superadmin &&
+          authProvider.role != UserRole.admin) {
         if (storeProvider.myStores.isNotEmpty) {
           await storeProvider.switchStore(storeProvider.myStores.first);
         }
@@ -101,7 +102,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
       for (final id in _selectedProductIds.toList()) {
         await inventoryProvider.updateProductStatus(id, activate);
       }
+      // Trigger sync after bulk update
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Bulk status update completed')));
       }
@@ -144,7 +147,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
       for (final id in _selectedProductIds.toList()) {
         await inventoryProvider.deleteProduct(id);
       }
+      // Trigger sync after bulk delete
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Selected products deleted')));
       }
@@ -185,7 +190,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     try {
       await inventoryProvider.deleteProduct(product.id);
+      // Trigger sync after delete
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Product "${product.name}" deleted')));
       }
@@ -203,6 +210,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
   /// Converts a Product object to Map and navigates to edit product screen
   void _openProductFromAlert(Product alert) {
+    // Use the new getter that provides the product as a map
     final productMap = {
       'id': alert.id,
       'name': alert.name,
@@ -216,8 +224,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
 
     // Close dialog then navigate to edit product screen
     Navigator.of(context).pop();
-    Future.microtask(() => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => EditProductScreen(product: productMap))));
+    Future.microtask(
+        () => context.pushNamedSmooth('/edit_product', arguments: productMap));
   }
 
   /// Return display name for a low-stock Product alert
@@ -230,7 +238,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final inventoryProvider = Provider.of<InventoryProviderV2>(context);
     final authProvider = Provider.of<AuthProvider>(context);
 
-    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+    if (authProvider.role != UserRole.superadmin &&
+        authProvider.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -254,8 +263,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 Wrap(
                   spacing: 1.0, // Reduced spacing between buttons
                   children: [
-                    if (context.watch<AuthProvider>().role == 'superadmin' ||
-                        context.watch<AuthProvider>().role == 'admin')
+                    if (context.watch<AuthProvider>().role ==
+                            UserRole.superadmin ||
+                        context.watch<AuthProvider>().role == UserRole.admin)
                       const StoreQuickAction(),
                     IconButton(
                       icon: const Icon(Icons.visibility, color: Colors.white),
@@ -773,14 +783,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                                   'is_active': product.isActive,
                                                   'store_id': product.storeId,
                                                 };
-                                                Navigator.of(context).push(
-                                                  MaterialPageRoute(
-                                                    builder: (_) =>
-                                                        EditProductScreen(
-                                                            product:
-                                                                productMap),
-                                                  ),
-                                                );
+                                                context.pushNamedSmooth(
+                                                    '/edit_product',
+                                                    arguments: productMap);
                                               } else if (value == 'delete') {
                                                 _confirmDeleteProduct(product);
                                               }

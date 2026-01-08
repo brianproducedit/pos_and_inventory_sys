@@ -1,9 +1,8 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
-import 'test_utils/fake_http_client.dart';
 import 'package:mobile/sync/sync_service.dart';
+import 'test_utils/fake_http_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeQueueItem {

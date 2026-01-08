@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/db/app_database.dart';
 
 class StoreBadge extends StatelessWidget {
   final Map<String, dynamic>? store;
@@ -38,12 +39,24 @@ class StoreBadge extends StatelessWidget {
         ),
         decoration: BoxDecoration(
           color: isActive
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
-              : Theme.of(context).colorScheme.error.withOpacity(0.1),
+              ? Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.1 * 255)
+              : Theme.of(context)
+                  .colorScheme
+                  .error
+                  .withValues(alpha: 0.1 * 255),
           border: Border.all(
             color: isActive
-                ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-                : Theme.of(context).colorScheme.error.withOpacity(0.3),
+                ? Theme.of(context)
+                    .colorScheme
+                    .primary
+                    .withValues(alpha: 0.3 * 255)
+                : Theme.of(context)
+                    .colorScheme
+                    .error
+                    .withValues(alpha: 0.3 * 255),
           ),
           borderRadius: BorderRadius.circular(8),
         ),
@@ -88,7 +101,7 @@ class StoreBadge extends StatelessWidget {
                           : Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.7),
+                              .withValues(alpha: 0.7 * 255),
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,
@@ -105,7 +118,7 @@ class StoreBadge extends StatelessWidget {
                             color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
-                                .withOpacity(0.6),
+                                .withValues(alpha: 0.6 * 255),
                           ),
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
@@ -135,7 +148,10 @@ class StoreBadge extends StatelessWidget {
               Icon(
                 Icons.keyboard_arrow_right,
                 size: compact ? 14 : 16,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.5 * 255),
               ),
             ],
           ],
@@ -156,9 +172,12 @@ class StoreBadge extends StatelessWidget {
         color: Theme.of(context)
             .colorScheme
             .surfaceContainerHighest
-            .withOpacity(0.5),
+            .withValues(alpha: 0.5 * 255),
         border: Border.all(
-          color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+          color: Theme.of(context)
+              .colorScheme
+              .outline
+              .withValues(alpha: 0.3 * 255),
         ),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -168,7 +187,10 @@ class StoreBadge extends StatelessWidget {
           Icon(
             Icons.store_outlined,
             size: compact ? 16 : 20,
-            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+            color: Theme.of(context)
+                .colorScheme
+                .onSurface
+                .withValues(alpha: 0.5 * 255),
           ),
           const SizedBox(width: 6),
           Text(
@@ -177,7 +199,10 @@ class StoreBadge extends StatelessWidget {
                     ? Theme.of(context).textTheme.bodySmall
                     : Theme.of(context).textTheme.bodyMedium)
                 ?.copyWith(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.5 * 255),
               fontStyle: FontStyle.italic,
             ),
           ),
@@ -189,7 +214,8 @@ class StoreBadge extends StatelessWidget {
   Widget _buildAllStoresBadge(BuildContext context) {
     // Check role to show limited access hint for non-admins
     final role = Provider.of<AuthProvider>(context, listen: false).role;
-    final isAdminOrSuper = role == 'superadmin' || role == 'admin';
+    final isAdminOrSuper =
+        role == UserRole.superadmin || role == UserRole.admin;
 
     final label = isAdminOrSuper
         ? 'Viewing: All Stores'
@@ -204,9 +230,15 @@ class StoreBadge extends StatelessWidget {
           vertical: compact ? 4 : 6,
         ),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+          color: Theme.of(context)
+              .colorScheme
+              .surface
+              .withValues(alpha: 0.95 * 255),
           border: Border.all(
-            color: Theme.of(context).colorScheme.primary.withOpacity(0.25),
+            color: Theme.of(context)
+                .colorScheme
+                .primary
+                .withValues(alpha: 0.25 * 255),
           ),
           borderRadius: BorderRadius.circular(8),
         ),
@@ -246,7 +278,10 @@ class StoreBadge extends StatelessWidget {
               Icon(
                 Icons.keyboard_arrow_right,
                 size: compact ? 14 : 16,
-                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.5 * 255),
               ),
             ],
           ],
@@ -271,7 +306,8 @@ class StoreIndicator extends StatelessWidget {
     if (store == null || store?['id'] == 0) {
       // Check role - only show All Stores for admin/superadmin
       final role = Provider.of<AuthProvider>(context, listen: false).role;
-      final isAdminOrSuper = role == 'superadmin' || role == 'admin';
+      final isAdminOrSuper =
+          role == UserRole.superadmin || role == UserRole.admin;
 
       if (!isAdminOrSuper) {
         // For non-admin roles, show a message that they don't have global access
@@ -280,10 +316,16 @@ class StoreIndicator extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+              color: Theme.of(context)
+                  .colorScheme
+                  .surface
+                  .withValues(alpha: 0.95 * 255),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                color: Theme.of(context)
+                    .colorScheme
+                    .outline
+                    .withValues(alpha: 0.3 * 255),
               ),
             ),
             child: Row(
@@ -320,17 +362,23 @@ class StoreIndicator extends StatelessWidget {
       }
 
       // Show explicit indicator for 'All Stores' (global view)
-      final label = 'Viewing: All Stores';
+      const label = 'Viewing: All Stores';
 
       return Semantics(
         label: 'Viewing All Stores',
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+            color: Theme.of(context)
+                .colorScheme
+                .surface
+                .withValues(alpha: 0.95 * 255),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+              color: Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.3 * 255),
             ),
           ),
           child: Row(
@@ -373,12 +421,19 @@ class StoreIndicator extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.9),
+        color:
+            Theme.of(context).colorScheme.surface.withValues(alpha: 0.9 * 255),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isActive
-              ? Theme.of(context).colorScheme.primary.withOpacity(0.3)
-              : Theme.of(context).colorScheme.error.withOpacity(0.3),
+              ? Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.3 * 255)
+              : Theme.of(context)
+                  .colorScheme
+                  .error
+                  .withValues(alpha: 0.3 * 255),
         ),
       ),
       child: Row(

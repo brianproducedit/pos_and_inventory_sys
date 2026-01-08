@@ -3,28 +3,22 @@ import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
-import '../data/remote/postgres_api_service.dart';
-import '../data/local/database_helper.dart';
-import '../data/sync/postgres_sync_service.dart';
 
+/// Analytics service for user behavior tracking events.
+/// Uses the backend API directly for event creation and fetching.
+/// Note: This is separate from sales analytics (AnalyticsRepository).
 class AnalyticsService {
   static const String baseUrl = Env.baseUrl;
-  final DatabaseHelper _db = DatabaseHelper();
-  final PostgresSyncService _syncService;
 
-  AnalyticsService({PostgresSyncService? syncService})
-      : _syncService = syncService ??
-            PostgresSyncService(
-              db: DatabaseHelper(),
-              api: PostgresApiService(),
-            );
+  AnalyticsService();
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('access_token');
   }
 
-  /// Create analytics event - works offline-first
+  /// Create analytics event - sends directly to backend
+  /// Falls back silently on failure (non-critical feature)
   Future<void> createAnalyticsEvent({
     required String eventName,
     int? userId,
@@ -36,35 +30,58 @@ class AnalyticsService {
     String? userAgent,
   }) async {
     try {
-      // Always store locally first (offline-first)
-      await _db.insertAnalyticsEvent(
-        eventName: eventName,
-        userId: userId,
-        fromStoreId: fromStoreId,
-        toStoreId: toStoreId,
-        durationMs: durationMs,
-        metadata: metadata,
-        ipAddress: ipAddress,
-        userAgent: userAgent,
+      final token = await _getToken();
+      if (token == null) {
+        debugPrint('📊 Analytics: No token, skipping event: $eventName');
+        return;
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/analytics'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'event_name': eventName,
+          'user_id': userId,
+          'from_store_id': fromStoreId,
+          'to_store_id': toStoreId,
+          'duration_ms': durationMs,
+          'metadata': metadata,
+        }),
       );
 
-      // Try to sync immediately if online
-      await _syncService.syncPendingChanges();
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint('📊 Analytics event sent: $eventName');
+      } else {
+        debugPrint('📊 Analytics event failed: ${response.statusCode}');
+      }
     } catch (e) {
-      debugPrint('AnalyticsService.createAnalyticsEvent error: $e');
-      // Local storage failed - this is a critical error
-      rethrow;
+      // Analytics events are non-critical - don't propagate errors
+      debugPrint('📊 Analytics event error (non-fatal): $e');
     }
   }
 
-  /// Fetch analytics summary - falls back to local cache when offline
-  Future<Map<String, dynamic>> getAnalyticsSummary(String eventName,
-      {int? sinceDays,
-      String? granularity,
-      String? startDate,
-      String? endDate}) async {
+  /// Fetch analytics summary from backend
+  Future<Map<String, dynamic>> getAnalyticsSummary(
+    String eventName, {
+    int? sinceDays,
+    String? granularity,
+    String? startDate,
+    String? endDate,
+  }) async {
     final token = await _getToken();
-    if (token == null) throw Exception('Not authenticated');
+    if (token == null) {
+      debugPrint(
+          '📊 Analytics: No token, returning empty summary for: $eventName');
+      return {
+        'event_name': eventName,
+        'total_count': 0,
+        'avg_duration_ms': null,
+        'by_store': [],
+      };
+    }
 
     final params = <String, String>{'event_name': eventName};
     if (sinceDays != null) params['since_days'] = sinceDays.toString();
@@ -85,14 +102,12 @@ class AnalyticsService {
         return jsonDecode(response.body);
       } else {
         debugPrint(
-            'AnalyticsService.getAnalyticsSummary: status ${response.statusCode}, body: ${response.body}');
+            'AnalyticsService.getAnalyticsSummary: status ${response.statusCode}');
         throw Exception(
-            'Failed to load analytics summary: ${response.statusCode} - ${response.body}');
+            'Failed to load analytics summary: ${response.statusCode}');
       }
     } catch (e) {
-      // If network fails, try to return local cached data
       debugPrint('AnalyticsService.getAnalyticsSummary network error: $e');
-      // For now, return empty data - in a full implementation, we'd cache server responses
       return {
         'event_name': eventName,
         'total_count': 0,
@@ -100,18 +115,5 @@ class AnalyticsService {
         'by_store': [],
       };
     }
-  }
-
-  /// Get local analytics events for offline viewing
-  Future<List<Map<String, dynamic>>> getLocalAnalyticsEvents({
-    String? eventName,
-    int? limit,
-    int? offset,
-  }) async {
-    return await _db.getAnalyticsEvents(
-      eventName: eventName,
-      limit: limit,
-      offset: offset,
-    );
   }
 }

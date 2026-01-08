@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_management_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
+import 'package:mobile/db/app_database.dart';
 
 class StoreUsersScreen extends StatefulWidget {
   final Map<String, dynamic> store;
@@ -30,6 +32,14 @@ class _StoreUsersScreenState extends State<StoreUsersScreen> {
   }
 
   Future<void> _loadStoreUsers() async {
+    final syncProvider = context.read<SyncProvider>();
+
+    // Set up sync completion callback to refresh users after sync
+    syncProvider.onSyncComplete = () async {
+      debugPrint('📥 StoreUsersScreen: Sync complete - reloading users');
+      _loadStoreUsers();
+    };
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -121,7 +131,7 @@ class _StoreUsersScreenState extends State<StoreUsersScreen> {
                                 ),
                               ],
                             ),
-                            trailing: authProvider.role == 'superadmin'
+                            trailing: authProvider.role == UserRole.superadmin
                                 ? PopupMenuButton<String>(
                                     onSelected: (value) =>
                                         _handleUserAction(value, user),
@@ -242,7 +252,9 @@ class _StoreUsersScreenState extends State<StoreUsersScreen> {
                   user['id'],
                   {'full_name': fullNameController.text},
                 );
+                // Trigger sync after update
                 if (context.mounted) {
+                  context.read<SyncProvider>().sync();
                   Navigator.of(context).pop();
                   _loadStoreUsers(); // Refresh the list
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -272,6 +284,8 @@ class _StoreUsersScreenState extends State<StoreUsersScreen> {
         user['id'],
         {'is_active': !(user['is_active'] ?? true)},
       );
+      // Trigger sync after toggle
+      context.read<SyncProvider>().sync();
       _loadStoreUsers(); // Refresh the list
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -308,6 +322,8 @@ class _StoreUsersScreenState extends State<StoreUsersScreen> {
                   user['id'],
                   {'store_id': null}, // Remove from store
                 );
+                // Trigger sync after update
+                context.read<SyncProvider>().sync();
                 Navigator.of(context).pop();
                 _loadStoreUsers(); // Refresh the list
                 ScaffoldMessenger.of(context).showSnackBar(

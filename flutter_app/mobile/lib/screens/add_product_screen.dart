@@ -4,10 +4,12 @@ import 'package:provider/provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
+import 'package:mobile/db/app_database.dart';
 // import 'package:mobile/theme/tokens.dart';
 
 class AddProductScreen extends StatefulWidget {
@@ -75,6 +77,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
             stockQuantity: int.parse(_stockController.text),
             description: _descriptionController.text.trim(),
           );
+
+      // Trigger immediate sync after creating product
+      debugPrint('🔄 Product created locally, triggering immediate sync...');
+      if (mounted) {
+        context.read<SyncProvider>().sync();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product added successfully!')),
@@ -96,7 +105,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
 
-    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+    if (authProvider.role != UserRole.superadmin &&
+        authProvider.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -117,8 +127,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
           ),
         ),
         actions: [
-          if (context.watch<AuthProvider>().role == 'superadmin' ||
-              context.watch<AuthProvider>().role == 'admin')
+          if (context.watch<AuthProvider>().role == UserRole.superadmin ||
+              context.watch<AuthProvider>().role == UserRole.admin)
             const StoreQuickAction(),
         ],
       ),
@@ -145,7 +155,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 PrimaryTextField(
                   controller: _priceController,
                   label: 'Price',
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   validator: (value) {
                     if (value?.isEmpty ?? true) return 'Please enter a price';
                     final price = double.tryParse(value!);

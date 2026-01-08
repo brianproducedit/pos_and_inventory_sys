@@ -130,6 +130,23 @@ class AuthProvider with ChangeNotifier {
   Future<String?> getToken() async {
     return await _offlineAuthService.secureStorage.read(key: 'access_token');
   }
+
+  /// Refresh current user data from local database (useful after sync)
+  Future<void> refreshCurrentUser() async {
+    if (_user != null) {
+      try {
+        final updatedUser = await _offlineAuthService.getCurrentUser();
+        if (updatedUser != null && updatedUser.id == _user!.id) {
+          _user = updatedUser;
+          notifyListeners();
+          debugPrint(
+              'Refreshed current user data for: ${updatedUser.username}');
+        }
+      } catch (e) {
+        debugPrint('Failed to refresh current user: $e');
+      }
+    }
+  }
 }
 
 /// Authentication exception

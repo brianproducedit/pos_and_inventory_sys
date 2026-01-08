@@ -36,7 +36,7 @@ dependencies:
   connectivity_plus: ^4.0.1
   flutter_riverpod: ^2.3.7
   crypto: ^3.0.3
-  bluetooth_print: ^4.3.0
+  # bluetooth_print: ^4.3.0  # Temporarily disabled due to Flutter embedding compatibility issues
   blue_thermal_printer: ^1.2.3
 
 dev_dependencies:
@@ -53,6 +53,9 @@ dev_dependencies:
   drift_dev: ^2.30.0
   sqflite_common_ffi: ^2.3.6
 
+  path_provider_platform_interface: any
+  plugin_platform_interface: any
+  sqflite_common: any
 flutter:
   uses-material-design: true
   assets:

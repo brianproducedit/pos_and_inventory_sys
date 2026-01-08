@@ -5,7 +5,7 @@ class FakeSyncService {
   bool pushCalled = false;
   bool pullCalled = false;
 
-  Future<bool> syncPendingChanges() async {
+  Future<bool> syncPendingChangesBatch() async {
     pushCalled = true;
     return true;
   }

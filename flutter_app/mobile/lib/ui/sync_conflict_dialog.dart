@@ -20,7 +20,7 @@ class SyncConflictDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Server value (preview):'),
+          const Text('Server value (preview):'),
           const SizedBox(height: 8),
           Text(serverData.toString(),
               style: Theme.of(context).textTheme.bodySmall),

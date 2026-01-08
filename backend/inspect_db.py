@@ -25,6 +25,7 @@ def inspect_database():
             print(f"ID: {user.id}")
             print(f"Username: {user.username}")
             print(f"Role: {user.role}")
+            print(f"Store ID: {user.store_id}")
             print(f"Password Hash: {user.password_hash[:20]}...")
             print("---")
 

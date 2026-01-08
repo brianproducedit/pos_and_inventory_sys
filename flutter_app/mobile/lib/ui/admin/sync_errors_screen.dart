@@ -35,7 +35,7 @@ class SyncErrorsScreen extends ConsumerWidget {
                     onPressed: () async {
                       final repo = ref.read(syncRepositoryProvider);
                       await repo.reenqueueQueueItem(e.queueId);
-                      ref.refresh(syncErrorsProvider);
+                      ref.invalidate(syncErrorsProvider);
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                           content: Text('Re-enqueued for retry')));
                     },
@@ -46,7 +46,7 @@ class SyncErrorsScreen extends ConsumerWidget {
                     onPressed: () async {
                       final repo = ref.read(syncRepositoryProvider);
                       await repo.clearError(e.id!);
-                      ref.refresh(syncErrorsProvider);
+                      ref.invalidate(syncErrorsProvider);
                       ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Error cleared')));
                     },
@@ -85,7 +85,7 @@ class SyncErrorsScreen extends ConsumerWidget {
                       onPressed: () async {
                         final repo = ref.read(syncRepositoryProvider);
                         await repo.reenqueueQueueItem(e.queueId);
-                        ref.refresh(syncErrorsProvider);
+                        ref.invalidate(syncErrorsProvider);
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content: Text('Re-enqueued for retry')));
@@ -97,7 +97,7 @@ class SyncErrorsScreen extends ConsumerWidget {
                       onPressed: () async {
                         final repo = ref.read(syncRepositoryProvider);
                         await repo.clearError(e.id!);
-                        ref.refresh(syncErrorsProvider);
+                        ref.invalidate(syncErrorsProvider);
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Error cleared')));
                       },

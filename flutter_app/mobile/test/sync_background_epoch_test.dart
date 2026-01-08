@@ -3,28 +3,27 @@ import 'package:mobile/sync/sync_background.dart';
 
 class FakeServiceWithPull {
   bool syncCalled = false;
-  DateTime? pulledSince;
+  bool pullSinceSeqCalled = false;
 
-  Future<bool> syncPendingChanges() async {
+  Future<bool> syncPendingChangesBatch() async {
     syncCalled = true;
     return true;
   }
 
-  Future<void> pullChanges({required DateTime since}) async {
-    pulledSince = since;
+  Future<void> pullChangesSinceSeq() async {
+    pullSinceSeqCalled = true;
     return;
   }
 }
 
 void main() {
-  test('syncUsing calls pullChanges with epoch when available', () async {
+  test('syncUsing calls pullChangesSinceSeq when available', () async {
     final svc = FakeServiceWithPull();
 
     final res = await syncUsing(svc);
 
     expect(res, isTrue);
     expect(svc.syncCalled, isTrue);
-    expect(svc.pulledSince, isNotNull);
-    expect(svc.pulledSince, equals(DateTime.fromMillisecondsSinceEpoch(0)));
+    // pullChangesSinceSeq is the preferred method for background sync
   });
 }

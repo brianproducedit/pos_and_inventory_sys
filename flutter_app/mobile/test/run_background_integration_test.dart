@@ -1,16 +1,15 @@
 import 'dart:convert';
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:mobile/data/local/database_helper.dart';
+import 'package:mobile/data/sync/sync_database_helper.dart';
+import 'package:mobile/db/app_database.dart';
 import 'package:mobile/data/remote/postgres_api_service.dart';
 import 'package:mobile/data/sync/postgres_sync_service.dart';
+import 'package:mobile/data/repositories/sync_repository.dart';
 import 'package:mobile/sync/sync_background.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'run_background_integration_test_helper.dart';
-import 'test_helpers.dart';
 
 class _FakeConnectivity implements Connectivity {
   @override
@@ -35,10 +34,11 @@ class TestSecureStorage extends FlutterSecureStorage {
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async {
-    if (value == null)
+    if (value == null) {
       _store.remove(key);
-    else
+    } else {
       _store[key] = value;
+    }
   }
 
   @override
@@ -67,20 +67,27 @@ class TestSecureStorage extends FlutterSecureStorage {
   }
 }
 
+late AppDatabase testDb;
+late SyncDatabaseHelper syncHelper;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    initSqfliteForTests();
-    await DatabaseHelper.initTestDb();
+    testDb = AppDatabase.inMemory();
+    syncHelper = SyncDatabaseHelper(testDb);
+    // Insert a test store for foreign key constraints
+    await testDb
+        .into(testDb.stores)
+        .insert(StoresCompanion.insert(name: 'Test Store'));
   });
 
   tearDown(() async {
-    await DatabaseHelper.resetTestDb();
+    await testDb.close();
   });
 
   test('runBackgroundTask records sync_error on 409 conflict', () async {
-    final db = DatabaseHelper();
+    final db = SyncDatabaseHelper(testDb);
     final d = await db.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -114,7 +121,6 @@ void main() {
     });
 
     // Fake HTTP client that returns conflict for the batch push
-    final client = http.Client();
     final fake = _FakeHttpClient((req) async {
       if (req.method == 'POST' && req.url.path == '/api/sync/push') {
         // Return a conflict in the batch push response
@@ -145,6 +151,7 @@ void main() {
     final svc = PostgresSyncService(
         db: db,
         api: api,
+        syncRepo: SyncRepository(dbHelper: db),
         httpClient: fake,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -173,8 +180,9 @@ class _FakeHttpClient extends http.BaseClient {
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final req = http.Request(request.method, request.url);
     req.headers.addAll(request.headers);
-    if (request is http.Request && request.body.isNotEmpty)
+    if (request is http.Request && request.body.isNotEmpty) {
       req.body = request.body;
+    }
     final res = await _handler(req);
     final bytes = utf8.encode(res.body);
     return http.StreamedResponse(Stream.fromIterable([bytes]), res.statusCode,

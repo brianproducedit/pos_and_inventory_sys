@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:mobile/services/sales_service.dart';
 import 'package:provider/provider.dart';
-import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -10,29 +8,21 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
-import 'package:mobile/data/repositories/transaction_repository.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:mobile/data/repositories/sale_repository_v2.dart';
 
 class ReceiptScreen extends StatefulWidget {
   final int saleId;
   final int? storeId; // optional override for tests or explicit store context
-  final SalesService? salesService; // optional injectable service for testing
-  final TransactionRepository?
-      transactionRepository; // for offline receipt generation
+  final SaleRepository? saleRepository; // injectable repository for testing
 
   const ReceiptScreen(
-      {super.key,
-      required this.saleId,
-      this.storeId,
-      this.salesService,
-      this.transactionRepository});
+      {super.key, required this.saleId, this.storeId, this.saleRepository});
 
   @override
   State<ReceiptScreen> createState() => _ReceiptScreenState();
 }
 
 class _ReceiptScreenState extends State<ReceiptScreen> {
-  final SalesService _salesService = SalesService();
   Map<String, dynamic>? _receiptData;
   bool _isLoading = true;
   String? _errorMessage;
@@ -53,47 +43,23 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
     try {
       setState(() => _isLoading = true);
 
-      // First try offline receipt generation
-      if (widget.transactionRepository != null) {
-        try {
-          final offlineReceipt =
-              await widget.transactionRepository!.getTransaction(widget.saleId);
-          if (offlineReceipt != null) {
-            setState(() {
-              _receiptData = offlineReceipt;
-              _isLoading = false;
-            });
-            return; // Successfully loaded offline receipt
-          }
-        } catch (e) {
-          // Offline receipt failed, continue to online attempt
-          debugPrint('Offline receipt generation failed: $e');
-        }
-      }
+      // Load receipt from V2 repository (fully offline)
+      final saleRepository =
+          widget.saleRepository ?? context.read<SaleRepository>();
 
-      // If offline failed or not available, try online receipt
-      // Determine store id to use for request. Precedence:
-      // 1) explicit widget.storeId (injected for tests or explicit flows)
-      // 2) current store from StoreProvider (if available)
-      // 3) null (SalesService will fall back to persisted store id if needed)
-      int? sid = widget.storeId;
-      if (sid == null) {
-        try {
-          final sp = Provider.of<StoreProvider>(context, listen: false);
-          final rawId = sp.currentStore != null ? sp.currentStore!['id'] : null;
-          sid = rawId is int ? rawId : int.tryParse(rawId?.toString() ?? '');
-        } catch (e) {
-          // Provider might not be available in some contexts (tests); ignore.
-          sid = null;
-        }
+      try {
+        final receiptData = await saleRepository.getReceiptData(widget.saleId);
+        setState(() {
+          _receiptData = receiptData;
+          _isLoading = false;
+        });
+      } catch (e) {
+        debugPrint('Failed to load receipt: $e');
+        setState(() {
+          _errorMessage = 'Failed to load receipt: $e';
+          _isLoading = false;
+        });
       }
-
-      final service = widget.salesService ?? _salesService;
-      final receipt = await service.getReceipt(widget.saleId, storeId: sid);
-      setState(() {
-        _receiptData = receipt;
-        _isLoading = false;
-      });
     } catch (e) {
       setState(() {
         _errorMessage = 'Failed to load receipt: $e';

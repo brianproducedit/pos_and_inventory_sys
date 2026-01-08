@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 // import 'package:mobile/widgets/secondary_button.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
+import 'package:mobile/db/app_database.dart';
 import '../providers/store_provider.dart';
-import '../services/store_service.dart';
 import '../providers/auth_provider.dart';
 import '../providers/user_management_provider.dart';
+import '../providers/sync_provider.dart';
 import 'store_users_screen.dart';
 
 class StoreManagementScreen extends StatefulWidget {
@@ -93,8 +95,8 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       );
     }
 
-    // Use case-insensitive check to be resilient to role string variations
-    if ((authProvider.role?.toString() ?? '').toLowerCase() != 'superadmin') {
+    // Use proper enum comparison for role check
+    if (authProvider.role != UserRole.superadmin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -112,7 +114,29 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             onPressed: () => _showCreateStoreDialog(context),
           ),
           IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: 'Sync from server',
+            onPressed: () async {
+              final syncProvider = context.read<SyncProvider>();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Syncing from server...')),
+              );
+              final success = await syncProvider.forceInitialSync();
+              if (mounted) {
+                await storeProvider.loadStores();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success
+                        ? 'Sync complete! Loaded ${storeProvider.stores.length} stores'
+                        : 'Sync failed. Please try again.'),
+                  ),
+                );
+              }
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Reload from local',
             onPressed: () => storeProvider.loadStores(),
           ),
         ],
@@ -493,6 +517,13 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
     try {
       await context.read<StoreProvider>().createStore(storeData);
+
+      // Trigger immediate sync after creating store
+      debugPrint('🔄 Store created locally, triggering immediate sync...');
+      if (context.mounted) {
+        context.read<SyncProvider>().sync();
+      }
+
       if (context.mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
@@ -585,7 +616,9 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
 
     try {
       await context.read<StoreProvider>().updateStore(storeId, storeData);
+      // Trigger sync after update
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Store updated successfully')),
@@ -626,9 +659,9 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
   }
 
   void _navigateToStoreUsers(Map<String, dynamic> store) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => StoreUsersScreen(store: store),
+    context.pushSmooth(
+      StoreUsersScreen(
+        store: store,
       ),
     );
   }
@@ -752,6 +785,8 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
         store['id'],
         {'is_active': newStatus},
       );
+      // Trigger sync after toggle
+      context.read<SyncProvider>().sync();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text(
@@ -792,6 +827,8 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
             .read<StoreProvider>()
             .updateStore(id, {'is_active': activate});
       }
+      // Trigger sync after bulk update
+      context.read<SyncProvider>().sync();
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bulk status update completed')));
     } catch (e) {
@@ -830,14 +867,10 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
       for (final id in _selectedStoreIds.toList()) {
         await context.read<StoreProvider>().deleteStore(id);
       }
+      // Trigger sync after bulk delete
+      context.read<SyncProvider>().sync();
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Selected stores deleted')));
-    } on UnauthorizedException catch (_) {
-      // Session expired or invalid credentials — clear session and force login
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Session expired. Please sign in again.')));
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-      return; // user redirected; skip final clearing
     } catch (e) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('Error deleting stores: $e')));
@@ -881,17 +914,14 @@ class _StoreManagementScreenState extends State<StoreManagementScreen> {
   void _deleteStore(BuildContext context, Map<String, dynamic> store) async {
     try {
       await context.read<StoreProvider>().deleteStore(store['id']);
+      // Trigger sync after delete
+      context.read<SyncProvider>().sync();
       Navigator.of(context).pop(); // Close confirmation dialog
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Store deleted successfully')),
       );
-    } on UnauthorizedException catch (_) {
-      // Session expired or invalid credentials — clear session and force login
-      Navigator.of(context).pop(); // Close confirmation dialog
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Session expired. Please sign in again.')));
-      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
     } catch (e) {
+      Navigator.of(context).pop(); // Close confirmation dialog if still open
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error deleting store: $e')),
       );

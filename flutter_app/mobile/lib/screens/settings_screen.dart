@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
@@ -6,6 +7,7 @@ import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/db/app_database.dart';
 import 'store_settings_screen.dart';
 import 'user_settings_screen.dart';
 import 'system_settings_screen.dart';
@@ -18,7 +20,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    final role = authProvider.role ?? 'cashier';
+    final role = authProvider.role ?? UserRole.cashier;
     // Debug: log role so we can verify Settings visibility on device
     debugPrint('SettingsScreen built, role=$role');
 
@@ -36,7 +38,8 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
         actions: [
-          if (role == 'superadmin' || role == 'admin') const StoreQuickAction(),
+          if (role == UserRole.superadmin || role == UserRole.admin)
+            const StoreQuickAction(),
         ],
       ),
       body: ListView(
@@ -48,10 +51,7 @@ class SettingsScreen extends StatelessWidget {
             'User Profile',
             'Update profile information and password',
             Icons.account_circle,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-            ),
+            () => context.pushSmooth(const UserProfileScreen()),
           ),
 
           const SizedBox(height: 16),
@@ -62,16 +62,25 @@ class SettingsScreen extends StatelessWidget {
             'User Settings',
             'Theme, language, notifications',
             Icons.person,
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const UserSettingsScreen()),
-            ),
+            () => context.pushSmooth(const UserSettingsScreen()),
           ),
 
           const SizedBox(height: 16),
 
+          // Data Protection (admin & superadmin)
+          if (role == UserRole.admin || role == UserRole.superadmin) ...[
+            _buildSettingsCard(
+              context,
+              'Data Protection',
+              'Backup, restore, and data integrity',
+              Icons.security,
+              () => Navigator.pushNamed(context, '/data_protection'),
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // Store Settings (admin only)
-          if (role == 'admin') ...[
+          if (role == UserRole.admin) ...[
             _buildSettingsCard(
               context,
               'Store Settings',
@@ -86,7 +95,7 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // System Settings (superadmin only)
-          if (role == 'superadmin') ...[
+          if (role == UserRole.superadmin) ...[
             _buildSettingsCard(
               context,
               'System Settings',
@@ -102,7 +111,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 16),
 
           // Sync demo (admin & superadmin)
-          if (role == 'superadmin' || role == 'admin') ...[
+          if (role == UserRole.superadmin || role == UserRole.admin) ...[
             _buildSettingsCard(
               context,
               'Sync Errors',

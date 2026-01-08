@@ -102,15 +102,15 @@ class OfflineStatusIcon extends StatelessWidget {
                             : () => syncProvider.syncNow(),
                       ),
                     )
-                  : IconButton(
-                      key: const ValueKey('sync_done'),
-                      icon: const Icon(Icons.cloud_done, color: Colors.green),
+                  : const IconButton(
+                      key: ValueKey('sync_done'),
+                      icon: Icon(Icons.cloud_done, color: Colors.green),
                       tooltip: 'All changes synced',
                       onPressed: null,
                     ))
-              : IconButton(
-                  key: const ValueKey('offline'),
-                  icon: const Icon(Icons.cloud_off, color: Colors.red),
+              : const IconButton(
+                  key: ValueKey('offline'),
+                  icon: Icon(Icons.cloud_off, color: Colors.red),
                   tooltip: 'Offline - Changes will sync when connected',
                   onPressed: null,
                 ),

@@ -17,7 +17,7 @@ class AllStoresBanner extends StatelessWidget {
           key: const Key('allStoresBanner'),
           width: double.infinity,
           height: height,
-          color: bg.withOpacity(0.95),
+          color: bg.withValues(alpha: 0.95 * 255),
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -39,7 +39,8 @@ class AllStoresBanner extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   'Aggregated',
-                  style: TextStyle(color: fg.withOpacity(0.9), fontSize: 12),
+                  style: TextStyle(
+                      color: fg.withValues(alpha: 0.9 * 255), fontSize: 12),
                 ),
               ]
             ],

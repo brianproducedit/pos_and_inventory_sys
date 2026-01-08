@@ -6,10 +6,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mobile/data/sync/postgres_sync_service.dart';
 import 'package:mobile/data/remote/postgres_api_service.dart';
-import 'package:mobile/data/local/database_helper.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:mobile/data/sync/sync_database_helper.dart';
+import 'package:mobile/data/repositories/sync_repository.dart';
+import 'package:mobile/db/app_database.dart';
 import '../../test_utils/fake_http_client.dart';
-import '../../test_helpers.dart';
 
 class _FakeConnectivity implements Connectivity {
   @override
@@ -67,21 +67,27 @@ class TestSecureStorage extends FlutterSecureStorage {
   }
 }
 
-void main() {
+late AppDatabase testDb;
+late SyncDatabaseHelper syncHelper;
+
+Future<void> main() async {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    initSqfliteForTests();
-    await DatabaseHelper.initTestDb();
+    testDb = AppDatabase.inMemory();
+    syncHelper = SyncDatabaseHelper(testDb);
+    // Insert a test store for foreign key constraints
+    await testDb
+        .into(testDb.stores)
+        .insert(StoresCompanion.insert(name: 'Test Store'));
   });
 
   tearDown(() async {
-    await DatabaseHelper.resetTestDb();
+    await testDb.close();
   });
 
   test('batch push applies id_map to local product and marks synced', () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final localId = await d.insert('products', {
@@ -142,8 +148,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -161,8 +168,7 @@ void main() {
   });
 
   test('batch push logs conflict and increments retry', () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final localId = await d.insert('products', {
@@ -213,8 +219,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -233,8 +240,7 @@ void main() {
 
   test('batch push applies multiple id_map mappings and marks all synced',
       () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final idA = await d.insert('products', {
@@ -303,8 +309,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -329,10 +336,285 @@ void main() {
     expect(qB['status'], 'synced');
   });
 
+  test('batch push applies transaction applied data and updates local sale',
+      () async {
+    final d = await syncHelper.database;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Create a user for FK
+    final userId = await d.insert('users', {
+      'username': 'tester',
+      'password_hash': 'x',
+      'role': 'cashier',
+      'store_id': 1,
+      'is_active': 1,
+      'created_at': now,
+      'last_updated_at': now
+    });
+
+    // Create a local sale (pending sync)
+    final saleId = await d.insert('sales', {
+      'transaction_number': 'LOCAL-TXN',
+      'total_amount': 6.0,
+      'payment_method': 'card',
+      'status': 'completed',
+      'store_id': 1,
+      'user_id': userId,
+      'created_at': now,
+      'last_updated_at': now,
+      'sync_status': 'pending'
+    });
+
+    // Enqueue sync item for sale
+    final payload = jsonEncode({
+      'table': 'sale',
+      'row_id': saleId,
+      'action': 'CREATE',
+      'data': {
+        'transaction_number': 'LOCAL-TXN',
+        'total_amount': 6.0,
+        'payment_method': 'card',
+        'status': 'completed',
+        'store_id': 1,
+        'user_id': userId,
+        'items': []
+      }
+    });
+
+    await d.insert('sync_queue', {
+      'table_name': 'sale',
+      'row_id': saleId,
+      'action': 'CREATE',
+      'payload': payload,
+      'created_at': now,
+      'retry_count': 0,
+      'status': 'pending'
+    });
+
+    final builder = FakeHttpClient();
+    builder.when('/api/sync/push', (req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final changes = (body['changes'] as List).cast<Map<String, dynamic>>();
+      final temp = changes.first['temp_id'] as String;
+      const serverId = 444;
+      return http.Response(
+          jsonEncode({
+            'applied': [
+              {
+                'resource_type': 'transaction',
+                'operation': 'create',
+                'id': serverId,
+                'data': {
+                  'transaction_number': 'SERVER-444',
+                  'store_id': 1,
+                  'user_id': 1,
+                  'total_amount': 6.0,
+                  'payment_method': 'card'
+                }
+              }
+            ],
+            'conflicts': [],
+            'id_map': {temp: serverId}
+          }),
+          200,
+          headers: {'content-type': 'application/json'});
+    });
+
+    final client = builder.build();
+    final api = PostgresApiService(client: client);
+
+    final fakeStore = TestSecureStorage();
+    await fakeStore.write(key: 'access_token', value: 'tok-123');
+
+    final svc = PostgresSyncService(
+        db: syncHelper,
+        api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
+        httpClient: client,
+        connectivity: _FakeConnectivity(),
+        secureStorage: fakeStore);
+
+    final ok = await svc.syncPendingChangesBatch();
+    expect(ok, isTrue);
+
+    final rows = await d.query('sales', where: 'id = ?', whereArgs: [saleId]);
+    expect(rows.first['server_id'], 444);
+    expect(rows.first['transaction_number'], 'SERVER-444');
+
+    final qrows =
+        await d.query('sync_queue', where: 'row_id = ?', whereArgs: [saleId]);
+    expect(qrows.first['status'], 'synced');
+  });
+
+  test('sale with unsynced local product creates product in same batch',
+      () async {
+    final d = await syncHelper.database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Create an unsynced local product (no server_id)
+    final localProdId = await d.insert('products', {
+      'store_id': 1,
+      'name': 'Sauce 500ml',
+      'sku': 'S500',
+      'price': 0.5,
+      'stock_quantity': 28,
+      'is_synced': 0,
+      'last_updated': now
+    });
+
+    // Create sale referencing local product
+    final userId = await d.insert('users', {
+      'username': 'tester2',
+      'password_hash': 'x',
+      'role': 'cashier',
+      'store_id': 1,
+      'is_active': 1,
+      'created_at': now,
+      'last_updated_at': now
+    });
+
+    final saleId = await d.insert('sales', {
+      'transaction_number': 'LOCAL-TXN-2',
+      'total_amount': 10.0,
+      'payment_method': 'cash',
+      'status': 'completed',
+      'store_id': 1,
+      'user_id': userId,
+      'created_at': now,
+      'last_updated_at': now,
+      'sync_status': 'pending'
+    });
+
+    // Add sale item using local product id
+    await d.insert('sale_items', {
+      'sale_id': saleId,
+      'product_id': localProdId,
+      'quantity': 2,
+      'unit_price': 5.0,
+      'total_price': 10.0,
+      'sync_status': 'pending'
+    });
+
+    // Enqueue sync item for sale only (no separate product queue item)
+    final payload = jsonEncode({
+      'table': 'sale',
+      'row_id': saleId,
+      'action': 'CREATE',
+      'data': {
+        'transaction_number': 'LOCAL-TXN-2',
+        'total_amount': 10.0,
+        'payment_method': 'cash',
+        'status': 'completed',
+        'store_id': 1,
+        'user_id': userId,
+        'items': [
+          {
+            'product_id': 't$localProdId',
+            'quantity': 2,
+            'unit_price': 5.0,
+            'total_price': 10.0
+          }
+        ]
+      }
+    });
+
+    await d.insert('sync_queue', {
+      'table_name': 'sale',
+      'row_id': saleId,
+      'action': 'CREATE',
+      'payload': payload,
+      'created_at': now,
+      'retry_count': 0,
+      'status': 'pending'
+    });
+
+    final builder = FakeHttpClient();
+    builder.when('/api/sync/push', (req) async {
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      final changes = (body['changes'] as List).cast<Map<String, dynamic>>();
+
+      // Expect a product create for t<localProdId> and a transaction create referencing it
+      final hasProductCreate =
+          changes.any((c) => c['resource_type'] == 'product');
+      final hasTxnCreate =
+          changes.any((c) => c['resource_type'] == 'transaction');
+      expect(hasProductCreate, isTrue);
+      expect(hasTxnCreate, isTrue);
+
+      final tempProd =
+          changes.firstWhere((c) => c['resource_type'] == 'product')['temp_id']
+              as String;
+      const serverProdId = 7777;
+      const serverTxnId = 8888;
+
+      return http.Response(
+          jsonEncode({
+            'applied': [
+              {
+                'resource_type': 'product',
+                'operation': 'create',
+                'id': serverProdId
+              },
+              {
+                'resource_type': 'transaction',
+                'operation': 'create',
+                'id': serverTxnId,
+                'data': {
+                  'transaction_number': 'SERVER-TXN-8888',
+                  'store_id': 1,
+                  'user_id': 1,
+                  'total_amount': 10.0,
+                  'payment_method': 'cash'
+                }
+              }
+            ],
+            'conflicts': [],
+            'id_map': {tempProd: serverProdId}
+          }),
+          200,
+          headers: {'content-type': 'application/json'});
+    });
+
+    final client = builder.build();
+    final api = PostgresApiService(client: client);
+
+    final fakeStore = TestSecureStorage();
+    await fakeStore.write(key: 'access_token', value: 'tok-123');
+
+    final svc = PostgresSyncService(
+        db: syncHelper,
+        api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
+        httpClient: client,
+        connectivity: _FakeConnectivity(),
+        secureStorage: fakeStore);
+
+    final ok = await svc.syncPendingChangesBatch();
+    expect(ok, isTrue);
+
+    // Verify product got server_id
+    final prodRows =
+        await d.query('products', where: 'id = ?', whereArgs: [localProdId]);
+    expect(prodRows.first['server_id'], 7777);
+
+    // Verify sale got server_id and transaction_number updated from server
+    final saleRows =
+        await d.query('sales', where: 'id = ?', whereArgs: [saleId]);
+    expect(saleRows.first['server_id'], 8888);
+    expect(saleRows.first['transaction_number'], 'SERVER-TXN-8888');
+
+    // Verify queue item marked synced
+    final qrows =
+        await d.query('sync_queue', where: 'row_id = ?', whereArgs: [saleId]);
+    expect(qrows.first['status'], 'synced');
+  });
+
+  // (Remove this duplicate code block, as it is now inside the test function above)
+
   test('batch push mixed operations apply update and delete properly',
       () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     // Existing product with server_id to update
@@ -413,8 +695,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -441,8 +724,7 @@ void main() {
   });
 
   test('batch push applies server-provided data for created product', () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final localId = await d.insert('products', {
@@ -506,8 +788,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);
@@ -529,8 +812,7 @@ void main() {
   });
 
   test('batch push applies server-provided data for update', () async {
-    final db = DatabaseHelper();
-    final d = await db.database;
+    final d = await syncHelper.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
     final updId = await d.insert('products', {
@@ -591,8 +873,9 @@ void main() {
     await fakeStore.write(key: 'access_token', value: 'tok-123');
 
     final svc = PostgresSyncService(
-        db: db,
+        db: syncHelper,
         api: api,
+        syncRepo: SyncRepository(dbHelper: syncHelper),
         httpClient: client,
         connectivity: _FakeConnectivity(),
         secureStorage: fakeStore);

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'package:drift/drift.dart';
@@ -53,15 +54,22 @@ class OfflineAuthService {
 
   /// Main login entry point - decides online vs offline
   Future<AuthResult> login(String username, String password) async {
-    final hasConnectivity =
-        await ConnectivityMonitor().checkActualConnectivity();
+    // Safely check connectivity - default to offline if check fails
+    bool hasConnectivity;
+    try {
+      hasConnectivity = await ConnectivityMonitor().checkActualConnectivity();
+    } catch (e) {
+      // If connectivity check itself fails, assume offline
+      debugPrint('Connectivity check failed: $e, assuming offline');
+      hasConnectivity = false;
+    }
 
     if (hasConnectivity) {
       try {
         return await loginOnline(username, password);
       } catch (e) {
         // Server unreachable, fall back to offline
-        print('Online login failed: $e, falling back to offline');
+        debugPrint('Online login failed: $e, falling back to offline');
         return await loginOffline(username, password);
       }
     } else {
@@ -83,23 +91,55 @@ class OfflineAuthService {
     // 4. Hash password for offline storage (SHA-256 + salt)
     final passwordHash = _hashPassword(password, username);
 
-    // 5. Store user in local DB for offline access
-    final existingUser = await (db.select(db.users)
+    // 5. CRITICAL: Map server store_id to local store_id for FK constraint
+    // Server returns store_id as server's ID, but local DB needs local store ID
+    int? localStoreId;
+    if (userInfo.storeId != null) {
+      final serverStoreId = userInfo.storeId!;
+      final localStore = await (db.select(db.stores)
+            ..where((s) => s.serverId.equals(serverStoreId)))
+          .getSingleOrNull();
+      if (localStore != null) {
+        localStoreId = localStore.id;
+        debugPrint(
+            '    Mapped login user store_id: server $serverStoreId -> local $localStoreId');
+      } else {
+        debugPrint(
+            '    ⚠️ Store with server_id $serverStoreId not found locally, setting store_id to null');
+        localStoreId =
+            null; // Store not synced yet, set to null to avoid FK error
+      }
+    }
+
+    // 6. Store user in local DB for offline access
+    // First check by server_id, then by username (for locally created users)
+    var existingUser = await (db.select(db.users)
           ..where((u) => u.serverId.equals(userInfo.id)))
         .getSingleOrNull();
 
+    // If not found by server_id, try finding by username
+    if (existingUser == null) {
+      existingUser = await (db.select(db.users)
+            ..where((u) => u.username.equals(username)))
+          .getSingleOrNull();
+      if (existingUser != null) {
+        debugPrint('    📌 Found existing local user by username: $username');
+      }
+    }
+
     if (existingUser != null) {
       // Update existing user
-      await (db.update(db.users)..where((u) => u.id.equals(existingUser.id)))
+      await (db.update(db.users)..where((u) => u.id.equals(existingUser!.id)))
           .write(UsersCompanion(
+        serverId: Value(userInfo.id), // Update server_id in case it was null
         username: Value(username),
         passwordHash: Value(passwordHash),
         fullName: Value(userInfo.fullName),
         role: Value(_parseRole(userInfo.role)),
-        storeId: Value(userInfo.storeId),
-        isActive: Value(true),
-        syncStatus: Value(SyncStatus.synced),
-        isLocalOnly: Value(false),
+        storeId: Value(localStoreId), // Use MAPPED local store_id
+        isActive: const Value(true),
+        syncStatus: const Value(SyncStatus.synced),
+        isLocalOnly: const Value(false),
         lastUpdatedAt: Value(DateTime.now()),
       ));
     } else {
@@ -110,10 +150,10 @@ class OfflineAuthService {
             passwordHash: passwordHash,
             fullName: Value(userInfo.fullName),
             role: _parseRole(userInfo.role),
-            storeId: Value(userInfo.storeId),
-            isActive: Value(true),
-            syncStatus: Value(SyncStatus.synced),
-            isLocalOnly: Value(false),
+            storeId: Value(localStoreId), // Use MAPPED local store_id
+            isActive: const Value(true),
+            syncStatus: const Value(SyncStatus.synced),
+            isLocalOnly: const Value(false),
           ));
     }
 
@@ -178,9 +218,9 @@ class OfflineAuthService {
           fullName: Value(fullName),
           role: role,
           storeId: Value(storeId),
-          isActive: Value(true),
-          syncStatus: Value(SyncStatus.pending),
-          isLocalOnly: Value(true), // Mark as ghost user
+          isActive: const Value(true),
+          syncStatus: const Value(SyncStatus.pending),
+          isLocalOnly: const Value(true), // Mark as ghost user
         ));
 
     // Enqueue for sync
@@ -231,8 +271,8 @@ class OfflineAuthService {
     await (db.update(db.users)..where((u) => u.id.equals(userId)))
         .write(UsersCompanion(
       passwordHash: Value(newHash),
-      mustChangePassword: Value(false),
-      syncStatus: Value(SyncStatus.pending),
+      mustChangePassword: const Value(false),
+      syncStatus: const Value(SyncStatus.pending),
       lastUpdatedAt: Value(DateTime.now()),
     ));
 

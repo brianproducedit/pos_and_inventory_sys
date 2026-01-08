@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:mobile/widgets/primary_button.dart';
+import 'package:mobile/db/app_database.dart';
 
 class ProductCard extends StatelessWidget {
-  final Map<String, dynamic> product;
+  final Product product;
   final VoidCallback onAdd;
   const ProductCard({super.key, required this.product, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
-    final name = product['name'] ?? 'Unknown Product';
-    final price = product['price'] ?? 0.0;
-    final stock = product['stock_quantity'] ?? 0;
+    final name = product.name;
+    final price = product.price;
+    final stock = product.stockQuantity;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
@@ -27,7 +28,7 @@ class ProductCard extends StatelessWidget {
                         fontWeight: FontWeight.bold, fontSize: 16),
                     textAlign: TextAlign.center),
                 const SizedBox(height: 2),
-                Text('\$${(price as num).toStringAsFixed(2)}',
+                Text('\$${price.toStringAsFixed(2)}',
                     style: const TextStyle(color: Colors.green, fontSize: 14)),
                 const SizedBox(height: 2),
                 Text('Stock: $stock',

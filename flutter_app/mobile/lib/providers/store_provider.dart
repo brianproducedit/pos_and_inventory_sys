@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../services/store_service.dart';
+import '../data/repositories/store_repository_v2.dart';
+import '../db/app_database.dart';
+import 'auth_provider.dart';
 
 class StoreProvider with ChangeNotifier {
-  final StoreService _storeService;
+  final StoreRepository _storeRepository;
+  AuthProvider? _authProvider;
 
-  StoreProvider({StoreService? storeService})
-      : _storeService = storeService ?? StoreService();
+  StoreProvider({required StoreRepository storeRepository})
+      : _storeRepository = storeRepository;
 
   List<Map<String, dynamic>> _stores = [];
   List<Map<String, dynamic>> _myStores = [];
@@ -45,6 +49,27 @@ class StoreProvider with ChangeNotifier {
     super.dispose();
   }
 
+  /// Set the auth provider to access current user information
+  void setAuthProvider(AuthProvider authProvider) {
+    _authProvider = authProvider;
+  }
+
+  /// Convert Store entity to Map format for UI compatibility
+  /// IMPORTANT: 'id' is the LOCAL database id (for FK constraints)
+  /// 'server_id' is the PostgreSQL id (for API calls)
+  Map<String, dynamic> _storeToMap(Store store) {
+    return {
+      'id': store.id, // LOCAL database id - needed for FK constraints!
+      'local_id': store.id,
+      'server_id': store.serverId,
+      'name': store.name,
+      'location': store.location,
+      'is_active': store.isActive,
+      'created_by': store.createdBy,
+      'created_at': store.createdAt.toIso8601String(),
+    };
+  }
+
   // Initialize store context on app start
   Future<void> initialize() async {
     debugPrint('StoreProvider.initialize: start');
@@ -65,24 +90,19 @@ class StoreProvider with ChangeNotifier {
       debugPrint(
           'StoreProvider._loadStoredStoreContext: storedStoreId=$storedStoreId');
 
-      // Always ask server for the canonical current store during initialization.
-      // This lets us restore an explicit 'All Stores' selection (server returns current_store=null)
-      debugPrint(
-          'StoreProvider._loadStoredStoreContext: fetching current store from backend');
-      final currentStoreData = await _storeService.getCurrentStore();
-      debugPrint(
-          'StoreProvider._loadStoredStoreContext: received currentStoreData=$currentStoreData');
-
-      // If backend provides a canonical current_store (may be null for All Stores)
-      if (currentStoreData.containsKey('current_store')) {
-        final cs = currentStoreData['current_store'];
+      // Try to restore from local database if stored ID exists
+      if (storedStoreId != null) {
+        debugPrint(
+            'StoreProvider._loadStoredStoreContext: restoring store with id=$storedStoreId');
+        final store = await _storeRepository.getById(storedStoreId);
+        final cs = store != null ? _storeToMap(store) : null;
         debugPrint(
             'StoreProvider._loadStoredStoreContext: current_store from backend=$cs');
 
         // Normalize malformed backend: map with null id should be treated as All Stores
-        if (cs == null || (cs is Map && cs['id'] == null)) {
+        if (cs == null) {
           debugPrint(
-              'StoreProvider._loadStoredStoreContext: backend provided null or null-id current_store; considering role before treating as All Stores');
+              'StoreProvider._loadStoredStoreContext: backend provided null current_store; considering role before treating as All Stores');
 
           // Only allow All Stores (null) for admin / superadmin. For other roles, prefer
           // a deterministic fallback: load _myStores and pick the first available store.
@@ -109,7 +129,7 @@ class StoreProvider with ChangeNotifier {
               _currentStore = _myStores.first;
               _restoredStoreContext = true;
               debugPrint(
-                  'StoreProvider._loadStoredStoreContext: non-admin fallback to myStores[0]=${_currentStore}');
+                  'StoreProvider._loadStoredStoreContext: non-admin fallback to myStores[0]=$_currentStore');
             } else {
               // No assigned stores; clear persisted context and avoid setting All Stores for non-admin
               debugPrint(
@@ -126,25 +146,19 @@ class StoreProvider with ChangeNotifier {
               'StoreProvider._loadStoredStoreContext: successfully set _currentStore to ${_currentStore?['name']} (id=${_currentStore?['id']})');
         }
         debugPrint(
-            'StoreProvider._loadStoredStoreContext: restored _currentStore=${_currentStore}');
+            'StoreProvider._loadStoredStoreContext: restored _currentStore=$_currentStore');
 
         // Persist the canonical choice locally (null -> remove key)
         await _saveStoreContext();
         // Notify listeners so consumers can react to restored context
         _safeNotify();
       } else if (storedStoreId != null) {
-        // Fallback for legacy behavior: try to use stored ID if backend did not return current_store
+        // Fallback: Try to restore from stored ID
         debugPrint(
-            'StoreProvider._loadStoredStoreContext: trying fallback with storedStoreId=$storedStoreId');
-        final currentStoreData = await _storeService.getCurrentStore();
-        final cs = currentStoreData['current_store'];
-        if (cs == null || (cs is Map && cs['id'] == null)) {
-          _currentStore = null;
-          _restoredStoreContext = true;
-          await _saveStoreContext();
-          _safeNotify();
-        } else if (currentStoreData['current_store'] != null) {
-          _currentStore = currentStoreData['current_store'];
+            'StoreProvider._loadStoredStoreContext: no cs found, trying fallback with storedStoreId=$storedStoreId');
+        final store = await _storeRepository.getById(storedStoreId);
+        if (store != null) {
+          _currentStore = _storeToMap(store);
           _restoredStoreContext = true;
           await _saveStoreContext();
           _safeNotify();
@@ -185,7 +199,8 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      _stores = await _storeService.getStores();
+      final stores = await _storeRepository.getAll();
+      _stores = stores.map(_storeToMap).toList().cast<Map<String, dynamic>>();
       // Ensure myStores are loaded before performing any client-side access checks
       if (_myStores.isEmpty) {
         await loadMyStores();
@@ -220,7 +235,34 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      _myStores = await _storeService.getMyStores();
+      final allStores = await _storeRepository.getAll();
+
+      // Filter stores based on user role and store assignment
+      List<Store> userStores;
+      final userRole = _authProvider?.role;
+      final userStoreId = _authProvider?.storeId;
+
+      if (userRole == UserRole.superadmin) {
+        // Superadmin sees all stores
+        userStores = allStores;
+        debugPrint(
+            'StoreProvider.loadMyStores: superadmin - showing all stores');
+      } else if ((userRole == UserRole.admin || userRole == UserRole.cashier) &&
+          userStoreId != null) {
+        // Admin and cashier see only their assigned store (if assigned)
+        userStores =
+            allStores.where((store) => store.id == userStoreId).toList();
+        debugPrint(
+            'StoreProvider.loadMyStores: role=$userRole - filtering to store_id=$userStoreId, found ${userStores.length} stores');
+      } else {
+        // Fallback: show all stores when no specific assignment or auth provider unset
+        userStores = allStores;
+        debugPrint(
+            'StoreProvider.loadMyStores: fallback - showing all stores (role=$userRole, storeId=$userStoreId)');
+      }
+
+      _myStores =
+          userStores.map(_storeToMap).toList().cast<Map<String, dynamic>>();
       debugPrint(
           'StoreProvider.loadMyStores: _myStores count=${_myStores.length}, ids=${_myStores.map((s) => s['id']).toList()}');
 
@@ -251,7 +293,12 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      final newStore = await _storeService.createStore(storeData);
+      final store = await _storeRepository.create(
+        name: storeData['name'] as String,
+        location: storeData['location'] as String?,
+        createdBy: storeData['created_by'] as int?,
+      );
+      final newStore = _storeToMap(store);
       _stores.add(newStore);
       _safeNotify();
       return newStore;
@@ -268,7 +315,14 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      final updatedStore = await _storeService.updateStore(storeId, storeData);
+      // Extract store ID (could be local or server ID)
+      final store = await _storeRepository.update(
+        storeId,
+        name: storeData['name'] as String?,
+        location: storeData['location'] as String?,
+        isActive: storeData['is_active'] as bool?,
+      );
+      final updatedStore = _storeToMap(store);
       final index = _stores.indexWhere((store) => store['id'] == storeId);
       if (index != -1) {
         _stores[index] = updatedStore;
@@ -287,12 +341,41 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      await _storeService.deleteStore(storeId);
-      _stores.removeWhere((store) => store['id'] == storeId);
+      // Use hard delete to permanently remove the store
+      debugPrint('🗑️ StoreProvider.deleteStore: Hard deleting store $storeId');
+      await _storeRepository.hardDelete(storeId);
+      _stores.removeWhere(
+          (store) => store['id'] == storeId || store['local_id'] == storeId);
+      _myStores.removeWhere(
+          (store) => store['id'] == storeId || store['local_id'] == storeId);
+      debugPrint('✅ StoreProvider.deleteStore: Store removed from local lists');
       _safeNotify();
     } catch (e) {
       _errorMessage = 'Failed to delete store: $e';
-      debugPrint('Error deleting store: $e');
+      debugPrint('❌ Error deleting store: $e');
+      rethrow;
+    }
+  }
+
+  /// Deactivate a store (soft delete - hides from active lists but preserves data)
+  Future<void> deactivateStore(int storeId) async {
+    _errorMessage = null;
+    _safeNotify();
+
+    try {
+      debugPrint(
+          '📴 StoreProvider.deactivateStore: Deactivating store $storeId');
+      await _storeRepository.deactivate(storeId);
+      // Remove from active lists but store still exists in DB
+      _stores.removeWhere(
+          (store) => store['id'] == storeId || store['local_id'] == storeId);
+      _myStores.removeWhere(
+          (store) => store['id'] == storeId || store['local_id'] == storeId);
+      debugPrint('✅ StoreProvider.deactivateStore: Store deactivated');
+      _safeNotify();
+    } catch (e) {
+      _errorMessage = 'Failed to deactivate store: $e';
+      debugPrint('❌ Error deactivating store: $e');
       rethrow;
     }
   }
@@ -303,7 +386,25 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      _storeUsers = await _storeService.getStoreUsers(storeId);
+      // Implementation: read users from local DB associated with this store
+      final users = await (_storeRepository.db.select(_storeRepository.db.users)
+            ..where((u) => u.storeId.equals(storeId)))
+          .get();
+
+      // Map to simple JSON-like structure
+      _storeUsers = users
+          .map((u) => {
+                'id': u.id,
+                'username': u.username,
+                'full_name': u.fullName,
+                'role': u.role,
+                'is_active': u.isActive,
+                'store_id': u.storeId,
+              })
+          .toList();
+
+      debugPrint(
+          'StoreProvider.loadStoreUsers: found ${_storeUsers.length} users for store $storeId');
     } catch (e) {
       _errorMessage = 'Failed to load store users: $e';
       debugPrint('Error loading store users: $e');
@@ -341,11 +442,23 @@ class StoreProvider with ChangeNotifier {
     _safeNotify();
 
     try {
-      await _storeService.assignAdminToStore(storeId, adminId);
-      // Refresh store users if we're viewing this store
-      if (_currentStore?['id'] == storeId) {
-        await loadStoreUsers(storeId);
-      }
+      // Implementation: set user role to admin and associate with store locally
+      await (_storeRepository.db.update(_storeRepository.db.users)
+            ..where((u) => u.id.equals(adminId)))
+          .write(
+        UsersCompanion(
+          role: const Value(UserRole.admin),
+          storeId: Value(storeId),
+          syncStatus: const Value(SyncStatus.pending),
+          lastUpdatedAt: Value(DateTime.now()),
+        ),
+      );
+
+      debugPrint(
+          'StoreProvider.assignAdminToStore: assigned adminId=$adminId to store=$storeId');
+
+      // Refresh users for the store
+      await loadStoreUsers(storeId);
     } catch (e) {
       _errorMessage = 'Failed to assign admin: $e';
       debugPrint('Error assigning admin: $e');
@@ -428,29 +541,14 @@ class StoreProvider with ChangeNotifier {
       _isSwitchingStore = true;
       _safeNotify();
 
-      // Call backend to switch store context
-      debugPrint(
-          'StoreProvider.switchStore: calling backend to switch to id=${store['id']}');
-      final response = await _storeService.switchStore(requestedId);
+      // Offline-first: Just update local state (no backend call)
+      debugPrint('StoreProvider.switchStore: switching to id=${store['id']}');
 
-      // Use backend's canonical current_store if present
-      if (response.containsKey('current_store')) {
-        // backend may intentionally return null for All Stores
-        final cs = response['current_store'];
-        // Normalize malformed backend response: treat a map with null id as global view
-        if (cs == null) {
-          _currentStore = null;
-        } else if (cs is Map && (cs['id'] == null)) {
-          debugPrint(
-              'StoreProvider.switchStore: backend returned current_store with null id — normalizing to All Stores');
-          _currentStore = null;
-        } else {
-          _currentStore = cs;
-        }
+      // Update current store
+      if (requestedId == 0) {
+        _currentStore = null; // All Stores
       } else {
-        // If this is the 'All Stores' option (id == 0), the canonical response may be null
-        // so store the null to represent global view
-        _currentStore = requestedId == 0 ? null : store;
+        _currentStore = store;
       }
 
       // Save to local storage

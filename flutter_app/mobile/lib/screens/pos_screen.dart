@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/pos_provider_v2.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/theme/tokens.dart';
@@ -51,8 +51,8 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
 
       // Prevent non-admins from being left on All Stores: fallback to myStore if needed
       if (storeProvider.currentStore == null &&
-          auth.role != 'superadmin' &&
-          auth.role != 'admin') {
+          auth.role != UserRole.superadmin &&
+          auth.role != UserRole.admin) {
         if (storeProvider.myStores.isNotEmpty) {
           await storeProvider.switchStore(storeProvider.myStores.first);
         }
@@ -88,8 +88,9 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
                     store: context.watch<StoreProvider>().currentStore),
                 Row(
                   children: [
-                    if (context.watch<AuthProvider>().role == 'superadmin' ||
-                        context.watch<AuthProvider>().role == 'admin')
+                    if (context.watch<AuthProvider>().role ==
+                            UserRole.superadmin ||
+                        context.watch<AuthProvider>().role == UserRole.admin)
                       const StoreQuickAction(),
                     // V2: Refresh button removed - streams auto-update
                     Consumer<PosProviderV2>(
@@ -360,6 +361,13 @@ class _PosScreenState extends State<PosScreen> with WidgetsBindingObserver {
 
     try {
       await posProvider.processSale(paymentMethod);
+
+      // Trigger immediate sync after completing sale
+      debugPrint('🔄 Sale completed locally, triggering immediate sync...');
+      if (context.mounted) {
+        context.read<SyncProvider>().sync();
+      }
+
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

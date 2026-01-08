@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/widgets/primary_dialog.dart';
 
 Future<bool> showConfirmDialog(
   BuildContext context, {
@@ -10,7 +11,7 @@ Future<bool> showConfirmDialog(
   final result = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: Text(title),
+      title: PrimaryDialogTitle(title: title),
       content: Text(content),
       actions: [
         TextButton(

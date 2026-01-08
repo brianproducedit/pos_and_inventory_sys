@@ -26,12 +26,12 @@ class ProductListItem extends StatelessWidget {
           style: Theme.of(context)
               .textTheme
               .bodyMedium
-              ?.copyWith(color: Theme.of(context).colorScheme.onBackground),
+              ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
           children: [
-            TextSpan(text: 'Price: '),
+            const TextSpan(text: 'Price: '),
             TextSpan(
                 text: '\$${(product['price'] ?? 0).toStringAsFixed(2)}',
-                style: TextStyle(color: AppColors.primaryAction)),
+                style: const TextStyle(color: AppColors.primaryAction)),
             TextSpan(text: ' • Stock: ${product['stock_quantity'] ?? 0}'),
           ],
         ),

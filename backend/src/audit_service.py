@@ -74,6 +74,7 @@ class AuditService:
             log_dict = {
                 'id': log.id,
                 'user_id': log.user_id,
+                'username': log.user.username if log.user else None,
                 'store_id': log.store_id,
                 'action': log.action,
                 'entity_type': log.resource_type,

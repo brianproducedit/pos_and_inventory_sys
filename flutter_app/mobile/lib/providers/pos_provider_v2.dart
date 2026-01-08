@@ -73,7 +73,7 @@ class PosProviderV2 with ChangeNotifier {
     final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
 
     // Superadmin sees all products, others see store-filtered products
-    final stream = (_authProvider?.role == 'superadmin')
+    final stream = (_authProvider?.role == UserRole.superadmin)
         ? _productRepo.watchAll()
         : _productRepo.watchAll(storeId: storeId);
 

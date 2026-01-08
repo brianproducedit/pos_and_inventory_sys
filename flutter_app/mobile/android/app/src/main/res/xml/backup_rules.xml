@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android Auto Backup Rules for POS and Inventory App
+    
+    Purpose: Ensure critical app data survives uninstall/reinstall scenarios
+    by backing up to Google Drive (Android 6.0+) or local backup (Android 5.0).
+    
+    Data categories:
+    1. INCLUDE: Database files, sync state, user preferences
+    2. EXCLUDE: Cache files, temporary files, sensitive tokens
+-->
+<full-backup-content>
+    <!-- Include critical app data -->
+    
+    <!-- Main database file (Drift/SQLite) - most critical -->
+    <include domain="database" path="." />
+    
+    <!-- Shared preferences including sync state, user settings -->
+    <include domain="sharedpref" path="." />
+    
+    <!-- External storage backups we create -->
+    <include domain="external" path="POS_Backups" />
+    
+    <!-- Flutter secure storage (encrypted credentials) -->
+    <include domain="file" path="flutter_secure_storage" />
+    
+    <!-- Exclude temporary and cache files -->
+    <exclude domain="cache" path="." />
+    
+    <!-- Exclude image cache -->
+    <exclude domain="file" path="image_cache" />
+    
+    <!-- Exclude logs that might contain sensitive info -->
+    <exclude domain="file" path="logs" />
+    
+    <!-- Exclude temporary sync files -->
+    <exclude domain="file" path="sync_temp" />
+</full-backup-content>

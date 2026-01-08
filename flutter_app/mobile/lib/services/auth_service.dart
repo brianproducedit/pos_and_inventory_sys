@@ -3,10 +3,10 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:crypto/crypto.dart';
+import 'package:drift/drift.dart';
 import '../config/env.dart';
-import '../data/local/database_helper.dart';
+import '../db/app_database.dart';
 
 // Typed exception for auth errors to avoid throwing raw Maps.
 class AuthException implements Exception {
@@ -29,8 +29,8 @@ class AuthService {
     return digest.toString();
   }
 
-  /// Attempt offline login using stored credentials and local DB
-  Future<bool> offlineLogin(DatabaseHelper dbHelper,
+  /// Attempt offline login using stored credentials and Drift DB
+  Future<bool> offlineLogin(AppDatabase db,
       {String? username, String? password}) async {
     // Use provided credentials or fall back to stored ones
     final storedUsername =
@@ -40,14 +40,15 @@ class AuthService {
 
     if (storedUsername == null || storedPassword == null) return false;
 
-    final db = await dbHelper.database;
-    final userRows = await db.query('users',
-        where: 'username = ?', whereArgs: [storedUsername], limit: 1);
+    final user = await (db.select(db.users)
+          ..where((u) => u.username.equals(storedUsername))
+          ..limit(1))
+        .getSingleOrNull();
 
-    if (userRows.isNotEmpty) {
+    if (user != null) {
       // Check if we have a stored password hash for offline validation
       final storedHash =
-          await _secureStorage.read(key: 'password_hash_${storedUsername}');
+          await _secureStorage.read(key: 'password_hash_$storedUsername');
       if (storedHash != null) {
         final inputHash = _hashPassword(storedPassword);
         if (inputHash != storedHash) {
@@ -65,15 +66,15 @@ class AuthService {
   // Accept an injectable HTTP client for easier testing.
   final http.Client _client;
   final FlutterSecureStorage _secureStorage;
-  final DatabaseHelper? _dbHelper;
+  final AppDatabase? _db;
 
   AuthService(
       [http.Client? client,
       FlutterSecureStorage? secureStorage,
-      DatabaseHelper? dbHelper])
+      AppDatabase? db])
       : _client = client ?? http.Client(),
         _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        _dbHelper = dbHelper;
+        _db = db;
 
   /// Login: call remote token endpoint, store token securely, and persist basic user info in local DB.
   Future<Map<String, dynamic>> login(String username, String password) async {
@@ -109,28 +110,39 @@ class AuthService {
         // Try to fetch and persist user info; if persisting fails, rollback token write to keep atomicity
         try {
           final userInfo = await getUserInfo();
-          if (_dbHelper != null && userInfo is Map<String, dynamic>) {
+          if (_db != null) {
             final id = userInfo['id'] as int?;
-            final name = userInfo['name'] as String? ?? '';
-            final email = userInfo['email'] as String? ?? '';
+            final fullName = userInfo['name'] as String? ?? '';
             final uname = userInfo['username'] as String? ?? username;
-            final role = userInfo['role'] as String? ?? '';
+            final roleStr = userInfo['role'] as String? ?? 'user';
             final storeId = userInfo['store_id'] as int?;
-            final now = DateTime.now().millisecondsSinceEpoch;
-            final db = await _dbHelper!.database;
-            // Insert or replace full user info locally for offline access
-            await db.insert(
-                'users',
-                {
-                  'server_id': id,
-                  'username': uname,
-                  'name': name,
-                  'email': email,
-                  'role': role,
-                  'store_id': storeId,
-                  'last_synced': now
-                },
-                conflictAlgorithm: ConflictAlgorithm.replace);
+
+            // Map role string to UserRole enum
+            UserRole role;
+            switch (roleStr.toLowerCase()) {
+              case 'admin':
+                role = UserRole.admin;
+                break;
+              case 'superadmin':
+                role = UserRole.superadmin;
+                break;
+              case 'cashier':
+              default:
+                role = UserRole.cashier;
+            }
+
+            // Insert or replace full user info locally for offline access using Drift
+            await _db!.into(_db!.users).insertOnConflictUpdate(
+                  UsersCompanion.insert(
+                    serverId: Value(id),
+                    username: uname,
+                    passwordHash:
+                        _hashPassword(password), // Store hashed password
+                    fullName: Value(fullName),
+                    role: role,
+                    storeId: Value(storeId),
+                  ),
+                );
           }
         } catch (e) {
           // Rollback token write to keep login atomic if we cannot persist user info

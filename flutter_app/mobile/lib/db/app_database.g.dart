@@ -709,6 +709,10 @@ class $UsersTable extends Users with TableInfo<$UsersTable, User> {
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
   @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {username},
+      ];
+  @override
   User map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
     return User(
@@ -1374,6 +1378,11 @@ class $ProductsTable extends Products with TableInfo<$ProductsTable, Product> {
 
   @override
   Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  List<Set<GeneratedColumn>> get uniqueKeys => [
+        {sku},
+        {name, storeId},
+      ];
   @override
   Product map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
@@ -3442,6 +3451,14 @@ class $SyncQueueTable extends SyncQueue
   late final GeneratedColumn<String> payloadJson = GeneratedColumn<String>(
       'payload_json', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _clientSeqMeta =
+      const VerificationMeta('clientSeq');
+  @override
+  late final GeneratedColumn<int> clientSeq = GeneratedColumn<int>(
+      'client_seq', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -3485,6 +3502,7 @@ class $SyncQueueTable extends SyncQueue
         operation,
         entityId,
         payloadJson,
+        clientSeq,
         createdAt,
         lastAttemptAt,
         retryCount,
@@ -3536,6 +3554,10 @@ class $SyncQueueTable extends SyncQueue
     } else if (isInserting) {
       context.missing(_payloadJsonMeta);
     }
+    if (data.containsKey('client_seq')) {
+      context.handle(_clientSeqMeta,
+          clientSeq.isAcceptableOrUnknown(data['client_seq']!, _clientSeqMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -3583,6 +3605,8 @@ class $SyncQueueTable extends SyncQueue
           .read(DriftSqlType.string, data['${effectivePrefix}entity_id']),
       payloadJson: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}payload_json'])!,
+      clientSeq: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}client_seq'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       lastAttemptAt: attachedDatabase.typeMapping.read(
@@ -3609,6 +3633,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
   final String operation;
   final String? entityId;
   final String payloadJson;
+  final int clientSeq;
   final DateTime createdAt;
   final DateTime? lastAttemptAt;
   final int retryCount;
@@ -3621,6 +3646,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       required this.operation,
       this.entityId,
       required this.payloadJson,
+      required this.clientSeq,
       required this.createdAt,
       this.lastAttemptAt,
       required this.retryCount,
@@ -3639,6 +3665,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       map['entity_id'] = Variable<String>(entityId);
     }
     map['payload_json'] = Variable<String>(payloadJson);
+    map['client_seq'] = Variable<int>(clientSeq);
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || lastAttemptAt != null) {
       map['last_attempt_at'] = Variable<DateTime>(lastAttemptAt);
@@ -3663,6 +3690,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ? const Value.absent()
           : Value(entityId),
       payloadJson: Value(payloadJson),
+      clientSeq: Value(clientSeq),
       createdAt: Value(createdAt),
       lastAttemptAt: lastAttemptAt == null && nullToAbsent
           ? const Value.absent()
@@ -3685,6 +3713,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       operation: serializer.fromJson<String>(json['operation']),
       entityId: serializer.fromJson<String?>(json['entityId']),
       payloadJson: serializer.fromJson<String>(json['payloadJson']),
+      clientSeq: serializer.fromJson<int>(json['clientSeq']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       lastAttemptAt: serializer.fromJson<DateTime?>(json['lastAttemptAt']),
       retryCount: serializer.fromJson<int>(json['retryCount']),
@@ -3702,6 +3731,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       'operation': serializer.toJson<String>(operation),
       'entityId': serializer.toJson<String?>(entityId),
       'payloadJson': serializer.toJson<String>(payloadJson),
+      'clientSeq': serializer.toJson<int>(clientSeq),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'lastAttemptAt': serializer.toJson<DateTime?>(lastAttemptAt),
       'retryCount': serializer.toJson<int>(retryCount),
@@ -3717,6 +3747,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           String? operation,
           Value<String?> entityId = const Value.absent(),
           String? payloadJson,
+          int? clientSeq,
           DateTime? createdAt,
           Value<DateTime?> lastAttemptAt = const Value.absent(),
           int? retryCount,
@@ -3730,6 +3761,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
         operation: operation ?? this.operation,
         entityId: entityId.present ? entityId.value : this.entityId,
         payloadJson: payloadJson ?? this.payloadJson,
+        clientSeq: clientSeq ?? this.clientSeq,
         createdAt: createdAt ?? this.createdAt,
         lastAttemptAt:
             lastAttemptAt.present ? lastAttemptAt.value : this.lastAttemptAt,
@@ -3751,6 +3783,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       entityId: data.entityId.present ? data.entityId.value : this.entityId,
       payloadJson:
           data.payloadJson.present ? data.payloadJson.value : this.payloadJson,
+      clientSeq: data.clientSeq.present ? data.clientSeq.value : this.clientSeq,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       lastAttemptAt: data.lastAttemptAt.present
           ? data.lastAttemptAt.value
@@ -3773,6 +3806,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           ..write('operation: $operation, ')
           ..write('entityId: $entityId, ')
           ..write('payloadJson: $payloadJson, ')
+          ..write('clientSeq: $clientSeq, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptAt: $lastAttemptAt, ')
           ..write('retryCount: $retryCount, ')
@@ -3790,6 +3824,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
       operation,
       entityId,
       payloadJson,
+      clientSeq,
       createdAt,
       lastAttemptAt,
       retryCount,
@@ -3805,6 +3840,7 @@ class SyncQueueData extends DataClass implements Insertable<SyncQueueData> {
           other.operation == this.operation &&
           other.entityId == this.entityId &&
           other.payloadJson == this.payloadJson &&
+          other.clientSeq == this.clientSeq &&
           other.createdAt == this.createdAt &&
           other.lastAttemptAt == this.lastAttemptAt &&
           other.retryCount == this.retryCount &&
@@ -3819,6 +3855,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
   final Value<String> operation;
   final Value<String?> entityId;
   final Value<String> payloadJson;
+  final Value<int> clientSeq;
   final Value<DateTime> createdAt;
   final Value<DateTime?> lastAttemptAt;
   final Value<int> retryCount;
@@ -3831,6 +3868,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     this.operation = const Value.absent(),
     this.entityId = const Value.absent(),
     this.payloadJson = const Value.absent(),
+    this.clientSeq = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastAttemptAt = const Value.absent(),
     this.retryCount = const Value.absent(),
@@ -3844,6 +3882,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     required String operation,
     this.entityId = const Value.absent(),
     required String payloadJson,
+    this.clientSeq = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.lastAttemptAt = const Value.absent(),
     this.retryCount = const Value.absent(),
@@ -3859,6 +3898,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     Expression<String>? operation,
     Expression<String>? entityId,
     Expression<String>? payloadJson,
+    Expression<int>? clientSeq,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? lastAttemptAt,
     Expression<int>? retryCount,
@@ -3872,6 +3912,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       if (operation != null) 'operation': operation,
       if (entityId != null) 'entity_id': entityId,
       if (payloadJson != null) 'payload_json': payloadJson,
+      if (clientSeq != null) 'client_seq': clientSeq,
       if (createdAt != null) 'created_at': createdAt,
       if (lastAttemptAt != null) 'last_attempt_at': lastAttemptAt,
       if (retryCount != null) 'retry_count': retryCount,
@@ -3887,6 +3928,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       Value<String>? operation,
       Value<String?>? entityId,
       Value<String>? payloadJson,
+      Value<int>? clientSeq,
       Value<DateTime>? createdAt,
       Value<DateTime?>? lastAttemptAt,
       Value<int>? retryCount,
@@ -3899,6 +3941,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
       operation: operation ?? this.operation,
       entityId: entityId ?? this.entityId,
       payloadJson: payloadJson ?? this.payloadJson,
+      clientSeq: clientSeq ?? this.clientSeq,
       createdAt: createdAt ?? this.createdAt,
       lastAttemptAt: lastAttemptAt ?? this.lastAttemptAt,
       retryCount: retryCount ?? this.retryCount,
@@ -3928,6 +3971,9 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
     if (payloadJson.present) {
       map['payload_json'] = Variable<String>(payloadJson.value);
     }
+    if (clientSeq.present) {
+      map['client_seq'] = Variable<int>(clientSeq.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3955,6 +4001,7 @@ class SyncQueueCompanion extends UpdateCompanion<SyncQueueData> {
           ..write('operation: $operation, ')
           ..write('entityId: $entityId, ')
           ..write('payloadJson: $payloadJson, ')
+          ..write('clientSeq: $clientSeq, ')
           ..write('createdAt: $createdAt, ')
           ..write('lastAttemptAt: $lastAttemptAt, ')
           ..write('retryCount: $retryCount, ')
@@ -7532,6 +7579,7 @@ typedef $$SyncQueueTableCreateCompanionBuilder = SyncQueueCompanion Function({
   required String operation,
   Value<String?> entityId,
   required String payloadJson,
+  Value<int> clientSeq,
   Value<DateTime> createdAt,
   Value<DateTime?> lastAttemptAt,
   Value<int> retryCount,
@@ -7545,6 +7593,7 @@ typedef $$SyncQueueTableUpdateCompanionBuilder = SyncQueueCompanion Function({
   Value<String> operation,
   Value<String?> entityId,
   Value<String> payloadJson,
+  Value<int> clientSeq,
   Value<DateTime> createdAt,
   Value<DateTime?> lastAttemptAt,
   Value<int> retryCount,
@@ -7578,6 +7627,9 @@ class $$SyncQueueTableFilterComposer
 
   ColumnFilters<String> get payloadJson => $composableBuilder(
       column: $table.payloadJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get clientSeq => $composableBuilder(
+      column: $table.clientSeq, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -7624,6 +7676,9 @@ class $$SyncQueueTableOrderingComposer
   ColumnOrderings<String> get payloadJson => $composableBuilder(
       column: $table.payloadJson, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get clientSeq => $composableBuilder(
+      column: $table.clientSeq, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -7668,6 +7723,9 @@ class $$SyncQueueTableAnnotationComposer
 
   GeneratedColumn<String> get payloadJson => $composableBuilder(
       column: $table.payloadJson, builder: (column) => column);
+
+  GeneratedColumn<int> get clientSeq =>
+      $composableBuilder(column: $table.clientSeq, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -7717,6 +7775,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             Value<String> operation = const Value.absent(),
             Value<String?> entityId = const Value.absent(),
             Value<String> payloadJson = const Value.absent(),
+            Value<int> clientSeq = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> lastAttemptAt = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
@@ -7730,6 +7789,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             operation: operation,
             entityId: entityId,
             payloadJson: payloadJson,
+            clientSeq: clientSeq,
             createdAt: createdAt,
             lastAttemptAt: lastAttemptAt,
             retryCount: retryCount,
@@ -7743,6 +7803,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             required String operation,
             Value<String?> entityId = const Value.absent(),
             required String payloadJson,
+            Value<int> clientSeq = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> lastAttemptAt = const Value.absent(),
             Value<int> retryCount = const Value.absent(),
@@ -7756,6 +7817,7 @@ class $$SyncQueueTableTableManager extends RootTableManager<
             operation: operation,
             entityId: entityId,
             payloadJson: payloadJson,
+            clientSeq: clientSeq,
             createdAt: createdAt,
             lastAttemptAt: lastAttemptAt,
             retryCount: retryCount,

@@ -1,12 +1,13 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'sync_service.dart';
 import '../db/app_database.dart';
-import '../data/local/database_helper.dart';
+import '../data/sync/sync_database_helper.dart';
 import '../data/remote/postgres_api_service.dart';
 import '../data/sync/postgres_sync_service.dart';
+import '../data/repositories/sync_repository.dart';
 
 const String syncTaskName = 'syncTask';
 
@@ -29,10 +30,16 @@ Future<bool> runBackgroundTask({
   FutureOr<dynamic> Function()? openDb,
   FutureOr<dynamic> Function(dynamic service)? syncServiceFactory,
 }) async {
-  // Default behavior: use DatabaseHelper and PostgresSyncService
-  openDb ??= () async => DatabaseHelper();
+  // Default behavior: use SyncDatabaseHelper with Drift and PostgresSyncService
+  openDb ??= () async {
+    final db = AppDatabase();
+    // PRAGMA configuration (WAL mode, busy timeout) happens automatically during DB opening
+    return SyncDatabaseHelper(db);
+  };
   syncServiceFactory ??= (service) => PostgresSyncService(
-      db: service as DatabaseHelper, api: PostgresApiService());
+      db: service as SyncDatabaseHelper,
+      api: PostgresApiService(),
+      syncRepo: SyncRepository(dbHelper: service));
 
   final dbHelper = await openDb();
   try {
@@ -43,13 +50,9 @@ Future<bool> runBackgroundTask({
     return ok;
   } catch (e) {
     // Log but don't crash on background sync errors
-    print('Background sync task failed: $e');
+    debugPrint('Background sync task failed: $e');
     return false;
   }
-  // NOTE: We intentionally do NOT close the database here.
-  // The DatabaseHelper uses a singleton pattern, and closing it here would
-  // cause database_closed exceptions in foreground operations.
-  // The database will be properly managed by the app lifecycle.
 }
 
 /// Registers the background worker using the given Workmanager instance.
@@ -58,9 +61,10 @@ void registerBackgroundWork(Workmanager wm,
     {Duration frequency = const Duration(hours: 6),
     bool isInDebugMode = false}) {
   try {
-    print(
+    debugPrint(
         'Registering WorkManager sync task (frequency: $frequency, debug: $isInDebugMode)');
-    wm.initialize(callbackDispatcher, isInDebugMode: isInDebugMode);
+    wm.initialize(
+        callbackDispatcher); // isInDebugMode is deprecated and has no effect
     wm.registerPeriodicTask(
       'pos_sync_periodic',
       syncTaskName,
@@ -74,30 +78,24 @@ void registerBackgroundWork(Workmanager wm,
     // but surface a debug message for operators.
     // Note: we don't import flutter foundation here to avoid bringing Flutter
     // into test-only code.
-    print('WorkManager initialization failed: $e');
+    debugPrint('WorkManager initialization failed: $e');
   }
 }
 
 /// Core sync logic extracted for easier testing
 Future<bool> syncUsing(dynamic service) async {
-  // Support multiple test and production service shapes. Prefer calling
-  // syncPendingChangesBatch() when available, otherwise fall back to syncPendingChanges().
+  // Use syncPendingChangesBatch() for all sync operations (Drift migration complete).
   try {
     bool pushOk = false;
 
     try {
-      // Try preferred API: batch sync with checkpointing
+      // Use batch sync with checkpointing
       final res = await service.syncPendingChangesBatch();
       if (res is bool) pushOk = res;
     } catch (e) {
-      // Fallback to syncPendingChanges()
-      try {
-        final res = await service.syncPendingChanges();
-        if (res is bool) pushOk = res;
-      } catch (e) {
-        // No suitable push method
-        return false;
-      }
+      // REMOVED: Fallback to syncPendingChanges() - old method removed during Drift migration
+      // No suitable push method
+      return false;
     }
 
     // Attempt a simple pull if possible (non-fatal)
@@ -109,7 +107,7 @@ Future<bool> syncUsing(dynamic service) async {
           await maybePull();
         } else {
           // Fallback to API fetch when a token exists
-          final secure = const FlutterSecureStorage();
+          const secure = FlutterSecureStorage();
           final token = await secure.read(key: 'access_token');
           if (token != null) {
             final api = PostgresApiService();
@@ -118,7 +116,7 @@ Future<bool> syncUsing(dynamic service) async {
         }
       } catch (_) {
         // If accessing service.pullChangesSinceSeq throws, fall back to API fetch
-        final secure = const FlutterSecureStorage();
+        const secure = FlutterSecureStorage();
         final token = await secure.read(key: 'access_token');
         if (token != null) {
           final api = PostgresApiService();
@@ -152,7 +150,7 @@ StreamSubscription<ConnectivityResult> registerConnectivityListener(
         }
       } catch (e) {
         // Swallow to avoid crashing connectivity handler
-        print('Connectivity handler failed: $e');
+        debugPrint('Connectivity handler failed: $e');
       }
     }
   });

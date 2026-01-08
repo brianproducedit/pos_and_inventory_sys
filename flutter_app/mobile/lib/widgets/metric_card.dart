@@ -69,7 +69,8 @@ class MetricCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(subtitle!,
                   style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onBackground.withOpacity(0.7)),
+                      color: theme.colorScheme.onSurface
+                          .withValues(alpha: 0.7 * 255)),
                   textAlign: TextAlign.center),
             ],
             const SizedBox(height: 8),

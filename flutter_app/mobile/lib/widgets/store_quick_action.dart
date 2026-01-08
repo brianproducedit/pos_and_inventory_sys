@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/analytics_provider.dart';
+import 'package:mobile/db/app_database.dart';
 
 class StoreQuickAction extends StatefulWidget {
   const StoreQuickAction({super.key});
@@ -24,7 +25,7 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
 
     // Determine role & whether All Stores should be shown
     final role = context.read<AuthProvider>().role;
-    final isSuper = role == 'superadmin';
+    final isSuper = role == UserRole.superadmin;
 
     // Only superadmins can see the All Stores option
     final showAllOption = isSuper;
@@ -107,13 +108,15 @@ class _StoreQuickActionState extends State<StoreQuickAction> {
     final authProvider = context.watch<AuthProvider>();
     final role = authProvider.role;
 
-    if (role != 'superadmin' && role != 'admin') return const SizedBox.shrink();
+    if (role != UserRole.superadmin && role != UserRole.admin) {
+      return const SizedBox.shrink();
+    }
 
     final iconColor = Theme.of(context).appBarTheme.foregroundColor ??
         Theme.of(context).iconTheme.color ??
         Colors.white;
 
-    final tooltip = role == 'superadmin'
+    final tooltip = role == UserRole.superadmin
         ? 'Switch between stores (Super Admin: full access)'
         : 'Switch between assigned stores (Admin: assigned stores only)';
 

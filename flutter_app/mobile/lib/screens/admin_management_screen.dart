@@ -12,7 +12,9 @@ import 'package:mobile/widgets/primary_dialog.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/user_management_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/store_badge.dart';
+import 'package:mobile/db/app_database.dart';
 
 class AdminManagementScreen extends StatefulWidget {
   const AdminManagementScreen({super.key});
@@ -65,7 +67,7 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
     final storeProvider = context.watch<StoreProvider>();
 
     // Only superadmin can access this screen
-    if (authProvider.role != 'superadmin') {
+    if (authProvider.role != UserRole.superadmin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -74,7 +76,10 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       );
     }
 
-    final admins = userManagementProvider.admins;
+    final admins = userManagementProvider.admins
+        .where(
+            (admin) => admin['store_id'] == storeProvider.currentStore?['id'])
+        .toList();
     final stores = storeProvider.stores;
 
     return Scaffold(
@@ -91,7 +96,8 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         ),
         actions: [
           // Use the quick action button in the app bar for switching stores — prefer this placement
-          if (authProvider.role == 'superadmin' || authProvider.role == 'admin')
+          if (authProvider.role == UserRole.superadmin ||
+              authProvider.role == UserRole.admin)
             const StoreQuickAction(),
           IconButton(
             icon: const Icon(Icons.add),
@@ -464,6 +470,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   hint: 'Enter admin full name',
                 ),
                 const SizedBox(height: 16),
+                // For offline-first: show all active stores
+                // ALWAYS use local id for database FK constraint
+                // Store server_id separately for sync purposes
                 DropdownButtonFormField<int>(
                   initialValue: selectedStoreId,
                   decoration: const InputDecoration(
@@ -474,15 +483,48 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                       .where((store) => store['is_active'] == true)
                       .map((store) {
                     final name = (store['name'] ?? 'Unnamed Store').toString();
+                    final serverId = store['server_id'] as int?;
+                    final localId = store['id'] as int;
+                    // ALWAYS use local id for the value - needed for FK constraint
+                    final isPending = serverId == null;
                     return DropdownMenuItem<int>(
-                      value: store['id'] as int,
-                      child: Text(name),
+                      value: localId, // Use LOCAL id for database FK
+                      child: Row(
+                        children: [
+                          Text(name),
+                          if (isPending) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.shade100,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Pending Sync',
+                                style: TextStyle(
+                                    fontSize: 10, color: Colors.orange),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     );
                   }).toList(),
                   onChanged: (value) {
                     setState(() => selectedStoreId = value);
                   },
                 ),
+                const SizedBox(height: 8),
+                if (stores
+                    .where((s) => s['is_active'] == true)
+                    .where((s) => s['server_id'] == null)
+                    .isNotEmpty)
+                  const Text(
+                    'Stores marked "Pending Sync" will sync before the admin. Both will be available once online.',
+                    style: TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
               ],
             ),
           ),
@@ -516,6 +558,11 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                 }
 
                 try {
+                  debugPrint('🔵 Admin creation button pressed');
+                  debugPrint('   username: ${usernameController.text}');
+                  debugPrint('   fullName: ${fullNameController.text}');
+                  debugPrint('   store_id: $selectedStoreId');
+
                   await context.read<UserManagementProvider>().createUser({
                     'username': usernameController.text,
                     'password': passwordController.text,
@@ -523,6 +570,13 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                     'role': 'admin',
                     'store_id': selectedStoreId,
                   });
+
+                  // Trigger immediate sync after creating user
+                  debugPrint(
+                      '🔄 User created locally, triggering immediate sync...');
+                  if (context.mounted) {
+                    context.read<SyncProvider>().sync();
+                  }
 
                   if (context.mounted) {
                     Navigator.of(context).pop();
@@ -532,7 +586,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                       ),
                     );
                   }
-                } catch (e) {
+                } catch (e, stackTrace) {
+                  debugPrint('❌ Error creating admin: $e');
+                  debugPrint('Stack trace: $stackTrace');
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Error: $e')),
@@ -641,7 +697,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
                   },
                 );
 
+                // Trigger sync after update
                 if (context.mounted) {
+                  context.read<SyncProvider>().sync();
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -673,7 +731,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
         {'is_active': !(admin['is_active'] ?? true)},
       );
 
+      // Trigger sync after toggle
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -839,7 +899,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       for (final id in _selectedAdminIds.toList()) {
         await userManagementProvider.updateUser(id, {'is_active': activate});
       }
+      // Trigger sync after bulk update
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Bulk status update completed')));
       }
@@ -882,7 +944,9 @@ class _AdminManagementScreenState extends State<AdminManagementScreen> {
       for (final id in _selectedAdminIds.toList()) {
         await userManagementProvider.hardDeleteUser(id);
       }
+      // Trigger sync after bulk delete
       if (context.mounted) {
+        context.read<SyncProvider>().sync();
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Selected admins deleted')));
       }

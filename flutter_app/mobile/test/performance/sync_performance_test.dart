@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/sync/sync_service.dart';
 import 'package:mobile/db/app_database.dart';
-import 'package:drift/drift.dart';
 
 void main() {
   late AppDatabase db;
@@ -71,7 +70,7 @@ void main() {
       // Create products with large data to test memory usage
       for (int i = 0; i < 1000; i++) {
         await syncService.enqueueCreateProduct(
-          name: 'Memory Test Product $i' + 'x' * 100, // Large name
+          name: 'Memory Test Product $i${'x' * 100}', // Large name
           price: 1.0,
           stock: 1,
           storeId: 1,

@@ -185,14 +185,15 @@ class _PrintQueueScreenState extends State<PrintQueueScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1 * 255),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
               '$title ($count)',
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Color.alphaBlend(Colors.black.withOpacity(0.3), color),
+                color: Color.alphaBlend(
+                    Colors.black.withValues(alpha: 0.3 * 255), color),
               ),
             ),
           ),

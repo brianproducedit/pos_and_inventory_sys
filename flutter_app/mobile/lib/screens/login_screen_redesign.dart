@@ -8,6 +8,7 @@ import 'package:mobile/services/error_mapper.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/theme/tokens.dart';
 
 class LoginScreenRedesign extends StatefulWidget {
@@ -57,11 +58,33 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
     try {
       await authProvider.login(username, password);
 
-      // Reset store provider data for the new user and immediately initialize
+      // Get providers
       final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+      final syncProvider = Provider.of<SyncProvider>(context, listen: false);
+
+      // Reset store provider data for the new user
       storeProvider.resetUserData();
-      // Trigger initialization which loads the user's current store from backend
-      unawaited(storeProvider.initialize());
+
+      // Set up callback so stores reload after sync completes
+      syncProvider.onSyncComplete = () async {
+        debugPrint(
+            '📥 Sync complete callback - reloading stores and user data');
+        storeProvider.loadMyStores();
+        storeProvider.loadStores();
+
+        // Refresh current user data from updated local database
+        await authProvider.refreshCurrentUser();
+      };
+
+      // Perform initial sync to fetch all data from server
+      // This is CRITICAL for new devices - it fetches all stores, users, products, etc.
+      debugPrint('🔄 Starting post-login initial sync...');
+      final syncSuccess = await syncProvider.forceInitialSync();
+      debugPrint('📊 Initial sync result: $syncSuccess');
+
+      // Now initialize store provider (which reads from local DB that was just populated)
+      await storeProvider.initialize();
+      await storeProvider.loadStores();
 
       if (!mounted) return;
       // Show success notification and navigate to home
@@ -75,8 +98,9 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       // Support both legacy thrown Maps and the new AuthException
       String friendly;
       try {
-        friendly = ErrorMapper.friendlyMessage(
-            e is Map ? e : (e is auth_service.AuthException ? e : e.toString()));
+        friendly = ErrorMapper.friendlyMessage(e is Map
+            ? e
+            : (e is auth_service.AuthException ? e : e.toString()));
       } catch (mapperError) {
         debugPrint('Error in ErrorMapper: $mapperError');
         // Fallback to a generic message
@@ -126,7 +150,7 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
       body: SafeArea(
         child: Center(
           child: Card(
-            color: Colors.white.withOpacity(0.88),
+            color: Colors.white.withValues(alpha: 0.88 * 255),
             elevation: 6,
             margin: const EdgeInsets.symmetric(horizontal: 24),
             child: Padding(

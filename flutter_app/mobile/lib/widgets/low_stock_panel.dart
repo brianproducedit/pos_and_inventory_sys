@@ -24,7 +24,7 @@ class LowStockPanel extends StatelessWidget {
     }
 
     return Card(
-      color: count > 0 ? AppColors.warning.withOpacity(0.08) : null,
+      color: count > 0 ? AppColors.warning.withValues(alpha: 0.08 * 255) : null,
       child: ListTile(
         leading: const Icon(Icons.warning, color: AppColors.warning),
         title: Text('$count low stock alerts'),

@@ -61,6 +61,7 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(Text)
+    sku = Column(String, nullable=True, index=True)  # Add SKU field
     price = Column(Float, nullable=False)
     stock_quantity = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)  # New field for soft delete
@@ -76,6 +77,8 @@ class Product(Base):
 class Sale(Base):
     __tablename__ = "sales"
     id = Column(Integer, primary_key=True, index=True)
+    # New: persistent transaction number for human-readable receipts
+    transaction_number = Column(String, nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     store_id = Column(Integer, ForeignKey("stores.id"), nullable=False)
     total_amount = Column(Float, nullable=False)

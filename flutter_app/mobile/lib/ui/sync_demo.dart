@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mobile/config/env.dart';
 import 'package:mobile/db/app_database.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/ui/sync_conflict_dialog.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,20 +12,19 @@ import '../sync/sync_service.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/data/repositories/product_repository_v2.dart';
+import 'package:mobile/data/remote/postgres_api_service.dart';
+import 'package:mobile/data/utilities/database_cleanup.dart';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart' hide Provider;
-import 'package:mobile/data/providers.dart';
-import 'package:mobile/domain/models/product.dart' as domain_product;
-
-class SyncDemoScreen extends ConsumerStatefulWidget {
+class SyncDemoScreen extends StatefulWidget {
   final SyncService? syncServiceOverride;
   const SyncDemoScreen({Key? key, this.syncServiceOverride}) : super(key: key);
 
   @override
-  ConsumerState<SyncDemoScreen> createState() => _SyncDemoScreenState();
+  State<SyncDemoScreen> createState() => _SyncDemoScreenState();
 }
 
-class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
+class _SyncDemoScreenState extends State<SyncDemoScreen> {
   late app_db.AppDatabase db;
   late SyncService syncService;
   final _nameCtrl = TextEditingController();
@@ -80,7 +80,7 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
 
     // Insert an 'All Stores' option for admins/superadmins
     final role = context.read<AuthProvider>().role;
-    final canViewAll = role == 'superadmin' || role == 'admin';
+    final canViewAll = role == UserRole.superadmin || role == UserRole.admin;
     final dialogStores = <Map<String, dynamic>>[];
     final hasAllFromBackend =
         stores.any((s) => s['id'] == 0 || s['is_all'] == true);
@@ -217,19 +217,35 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
                 const SizedBox(width: 12),
                 ElevatedButton(
                     onPressed: () async {
-                      // Use the new ProductRepository via Riverpod to create a product in the new local DB
-                      final repo = ref.read(productRepositoryProvider);
+                      // Use ProductRepository via Provider to create a product in the local DB
+                      final repo = context.read<ProductRepository>();
                       final name = _nameCtrl.text.trim();
                       final price = double.tryParse(_priceCtrl.text) ?? 0.0;
                       if (name.isEmpty) return;
                       try {
-                        final id = await repo.addProduct(
-                          domain_product.Product(
-                              name: name,
-                              sku:
-                                  'SKU-${DateTime.now().millisecondsSinceEpoch}',
-                              price: price,
-                              stockQuantity: 0),
+                        final now = DateTime.now();
+                        final product = Product(
+                          id: 0,
+                          clientId:
+                              'client_${DateTime.now().millisecondsSinceEpoch}',
+                          name: name,
+                          sku: 'SKU-${DateTime.now().millisecondsSinceEpoch}',
+                          price: price,
+                          stockQuantity: 0,
+                          isActive: true,
+                          storeId: context
+                                  .read<StoreProvider>()
+                                  .currentStore?['id'] as int? ??
+                              0,
+                          syncStatus: SyncStatus.pending,
+                          createdAt: now,
+                          lastUpdatedAt: now,
+                        );
+                        final id = await repo.create(
+                          name: product.name,
+                          price: product.price,
+                          stockQuantity: product.stockQuantity,
+                          storeId: product.storeId,
                         );
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             content: Text('Created via repo (id: $id)')));
@@ -248,6 +264,26 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
                 const SizedBox(width: 12),
                 ElevatedButton(
                     onPressed: () async {
+                      // Trigger full data synchronization for consistency across devices
+                      try {
+                        final syncProvider = context.read<SyncProvider>();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Starting full data sync...')));
+                        await syncProvider.syncFullData();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Full data sync completed!')));
+                        setState(() {});
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Full sync failed: $e')));
+                      }
+                    },
+                    child: const Text('Full Data Sync')),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                    onPressed: () async {
                       // Trigger initial server snapshot fetch and seed local DB
                       try {
                         final tokenPrefs =
@@ -261,18 +297,18 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
                           return;
                         }
 
-                        final api = ref.read(postgresApiServiceProvider);
-                        final dbHelper = ref.read(databaseHelperProvider);
+                        final api = context.read<PostgresApiService>();
+                        final appDb = context.read<AppDatabase>();
                         ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                                 content: Text('Fetching initial data...')));
                         await api.fetchInitialDataAndSeedDB(
-                            token: token, dbHelper: dbHelper);
-                        final rows =
-                            await (await dbHelper.database).query('products');
+                            token: token, db: appDb);
+                        final products =
+                            await appDb.select(appDb.products).get();
                         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                             content: Text(
-                                'Seed completed: ${rows.length} products')));
+                                'Seed completed: ${products.length} products')));
                         setState(() {});
                       } catch (e) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -305,6 +341,62 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
                       }
                     },
                     child: const Text('Fix pending creates')),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                    onPressed: () async {
+                      try {
+                        final appDb = context.read<AppDatabase>();
+                        final cleanup = DatabaseCleanup(appDb);
+
+                        // Show confirmation dialog
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Clean Database?'),
+                            content: const Text(
+                                'This will remove duplicate products and users, '
+                                'and clean up orphaned records. This action cannot be undone.'),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('Clean Up'),
+                              ),
+                            ],
+                          ),
+                        );
+
+                        if (confirm != true) return;
+
+                        // Show loading
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                                content: Text('Cleaning database...')));
+
+                        final results = await cleanup.cleanupAll();
+                        final total = results.values.reduce((a, b) => a + b);
+
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(
+                                '✅ Cleanup complete: removed $total records\n'
+                                'Duplicates: ${results['duplicate_products']} products, '
+                                '${results['duplicate_users']} users\n'
+                                'Orphaned: ${results['orphaned_products']} products, '
+                                '${results['orphaned_sync_queue']} sync items'),
+                            duration: const Duration(seconds: 5)));
+                        setState(() {});
+                      } catch (e) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Cleanup failed: $e')));
+                      }
+                    },
+                    child: const Text('🧹 Clean Database')),
               ]),
             ),
             const SizedBox(height: 12),
@@ -374,11 +466,13 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
               child: FutureBuilder<List<app_db.Product>>(
                 future: db.getAllProducts(),
                 builder: (context, snapshot) {
-                  if (!snapshot.hasData)
+                  if (!snapshot.hasData) {
                     return const Center(child: CircularProgressIndicator());
-                  final products = snapshot.data! as List<app_db.Product>;
-                  if (products.isEmpty)
+                  }
+                  final products = snapshot.data!;
+                  if (products.isEmpty) {
                     return const Center(child: Text('No products'));
+                  }
                   return ListView.builder(
                     itemCount: products.length,
                     itemBuilder: (context, i) {
@@ -386,7 +480,7 @@ class _SyncDemoScreenState extends ConsumerState<SyncDemoScreen> {
                       return ListTile(
                         title: Text(p.name),
                         subtitle: Text(
-                            'Price: ${p.price} | Stock: ${p.stockQuantity} | clientId: ${p.clientId ?? '-'}'),
+                            'Price: ${p.price} | Stock: ${p.stockQuantity} | clientId: ${p.clientId}'),
                       );
                     },
                   );

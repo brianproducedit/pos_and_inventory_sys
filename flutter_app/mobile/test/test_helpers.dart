@@ -8,29 +8,69 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' as ffi;
+import 'package:mobile/db/app_database.dart';
+import 'package:mobile/data/repositories/store_repository_v2.dart';
 import 'package:sqflite_common/sqflite.dart' as sqflite_common;
 
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
-import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/analytics_provider.dart';
 import 'package:mobile/providers/sync_provider.dart';
+import 'package:mobile/data/remote/api_client.dart';
+import 'package:mobile/data/repositories/analytics_repository_v2.dart' as v2;
 
 /// Simple test Auth provider that reports a role and authenticated = true
 class TestAuthProvider extends AuthProvider {
-  final String roleValue;
-  TestAuthProvider({this.roleValue = 'superadmin'});
+  final UserRole roleValue;
+  User? _mockUser;
+
+  TestAuthProvider({this.roleValue = UserRole.superadmin})
+      : super(
+          db: AppDatabase(),
+          apiClient: ApiClient(),
+        ) {
+    // Create a mock user with the specified role
+    _mockUser = User(
+      id: 1,
+      clientId: 'test-user',
+      username: 'testuser',
+      fullName: 'Test User',
+      passwordHash: 'hash',
+      role: roleValue,
+      isActive: true,
+      mustChangePassword: false,
+      isLocalOnly: false,
+      syncStatus: SyncStatus.synced,
+      createdAt: DateTime.now(),
+      lastUpdatedAt: DateTime.now(),
+    );
+  }
 
   @override
   bool get isAuthenticated => true;
 
   @override
-  String? get role => roleValue;
+  User? get user => _mockUser;
+
+  @override
+  UserRole? get role => roleValue;
+
+  @override
+  int? get userId => 1;
+
+  @override
+  String? get username => 'testuser';
+}
+
+/// Mock StoreRepository for testing
+class MockStoreRepository extends StoreRepository {
+  MockStoreRepository(AppDatabase db) : super(db);
 }
 
 /// Minimal no-op providers used for widget tests to avoid provider not found
 class TestStoreProvider extends StoreProvider {
-  TestStoreProvider() : super();
+  TestStoreProvider({required AppDatabase database})
+      : super(storeRepository: MockStoreRepository(database));
 
   // Override initialization to avoid background network calls during tests
   @override
@@ -56,12 +96,11 @@ class TestStoreProvider extends StoreProvider {
   bool get isInitialized => true;
 }
 
-class TestInventoryProvider extends InventoryProvider {
-  TestInventoryProvider() : super();
-}
-
 class TestAnalyticsProvider extends AnalyticsProvider {
-  TestAnalyticsProvider() : super();
+  TestAnalyticsProvider()
+      : super(
+          analyticsRepository: v2.AnalyticsRepository(AppDatabase()),
+        );
 }
 
 class TestSyncProvider extends SyncProvider {
@@ -72,12 +111,10 @@ class TestSyncProvider extends SyncProvider {
 Widget wrapWithDefaultProviders(Widget child,
     {AuthProvider? auth,
     StoreProvider? store,
-    InventoryProvider? inventory,
     AnalyticsProvider? analytics,
     SyncProvider? sync}) {
   final a = auth ?? TestAuthProvider();
-  final s = store ?? TestStoreProvider();
-  final i = inventory ?? TestInventoryProvider();
+  final s = store ?? TestStoreProvider(database: AppDatabase());
   final an = analytics ?? TestAnalyticsProvider();
   final sy = sync ?? TestSyncProvider();
 
@@ -85,7 +122,6 @@ Widget wrapWithDefaultProviders(Widget child,
     providers: [
       ChangeNotifierProvider<AuthProvider>.value(value: a),
       ChangeNotifierProvider<StoreProvider>.value(value: s),
-      ChangeNotifierProvider<InventoryProvider>.value(value: i),
       ChangeNotifierProvider<AnalyticsProvider>.value(value: an),
       ChangeNotifierProvider<SyncProvider>.value(value: sy),
     ],
@@ -186,7 +222,7 @@ class _FakeHttpClientRequest implements HttpClientRequest {
   @override
   Encoding get encoding => utf8;
   @override
-  set encoding(Encoding _e) {}
+  set encoding(Encoding value) {}
 
   @override
   void add(List<int> data) => _buffer.add(data);

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/widgets/primary_dialog.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/store_provider.dart';
 import '../providers/analytics_provider.dart';
+import '../db/app_database.dart';
 
 class StoreSwitcher extends StatefulWidget {
   const StoreSwitcher({super.key});
@@ -20,14 +22,14 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
 
     // Show for superadmin and admin roles
     final userRole = authProvider.role;
-    if (userRole != 'superadmin' && userRole != 'admin') {
+    if (userRole != UserRole.superadmin && userRole != UserRole.admin) {
       return const SizedBox.shrink();
     }
 
     final myStores = storeProvider.myStores;
     final currentStore = storeProvider.currentStore;
 
-    final canViewAll = userRole == 'superadmin';
+    final canViewAll = userRole == UserRole.superadmin;
 
     // If the user has no stores and cannot view all stores, hide the switcher
     if (myStores.isEmpty && !canViewAll) {
@@ -102,13 +104,20 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+        color:
+            Theme.of(context).colorScheme.surface.withValues(alpha: 0.95 * 255),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: Theme.of(context).colorScheme.outline.withOpacity(0.3)),
+            color: Theme.of(context)
+                .colorScheme
+                .outline
+                .withValues(alpha: 0.3 * 255)),
         boxShadow: [
           BoxShadow(
-            color: Theme.of(context).colorScheme.shadow.withOpacity(0.1),
+            color: Theme.of(context)
+                .colorScheme
+                .shadow
+                .withValues(alpha: 0.1 * 255),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -125,7 +134,10 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
               gradient: LinearGradient(
                 colors: [
                   Theme.of(context).colorScheme.primary,
-                  Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                  Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.7 * 255),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -165,7 +177,7 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.7),
+                              .withValues(alpha: 0.7 * 255),
                         ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -211,11 +223,11 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
                                     ? Theme.of(context)
                                         .colorScheme
                                         .primary
-                                        .withOpacity(0.1)
+                                        .withValues(alpha: 0.1 * 255)
                                     : Theme.of(context)
                                         .colorScheme
                                         .error
-                                        .withOpacity(0.1),
+                                        .withValues(alpha: 0.1 * 255),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Icon(
@@ -252,7 +264,8 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
                                                 : Theme.of(context)
                                                     .colorScheme
                                                     .onSurface
-                                                    .withOpacity(0.5),
+                                                    .withValues(
+                                                        alpha: 0.5 * 255),
                                           ),
                                           overflow: TextOverflow.ellipsis,
                                         ),
@@ -278,7 +291,8 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
                                               color: Theme.of(context)
                                                   .colorScheme
                                                   .onSurface
-                                                  .withOpacity(0.6)),
+                                                  .withValues(
+                                                      alpha: 0.6 * 255)),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ],
@@ -307,7 +321,7 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
                       color: Theme.of(context)
                           .colorScheme
                           .primary
-                          .withOpacity(0.1),
+                          .withValues(alpha: 0.1 * 255),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
@@ -349,7 +363,7 @@ class _StoreSwitcherState extends State<StoreSwitcher> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('Switch Store'),
+          title: const PrimaryDialogTitle(title: 'Switch Store'),
           content: Text(newStore['id'] == 0
               ? 'Switch to All Stores?\n\nThis will reload aggregated data for all stores.'
               : 'Switch to store: ${newStore['name']}${newStore['location'] != null ? ' (' + newStore['location'] + ')' : ''}?\n\nThis will reload data for the selected store.'),

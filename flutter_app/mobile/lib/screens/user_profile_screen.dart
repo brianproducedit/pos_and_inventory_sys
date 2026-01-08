@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/user_profile_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/store_provider.dart';
+import '../providers/sync_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
@@ -77,6 +78,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final success = await profileProvider.updateUserProfile(updatedProfile);
 
     if (success && mounted) {
+      // Trigger sync after profile update
+      context.read<SyncProvider>().sync();
       setState(() {
         _isEditing = false;
       });

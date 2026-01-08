@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' as drift;
+import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import '../models/receipt_model.dart';
 import '../db/app_database.dart';
 
@@ -18,12 +21,14 @@ class BluetoothPrinter {
   final String address; // MAC address
   final String? modelName;
   final bool isConnected;
+  final BluetoothDevice? device; // Reference to the actual Bluetooth device
 
   BluetoothPrinter({
     required this.name,
     required this.address,
     this.modelName,
     this.isConnected = false,
+    this.device,
   });
 
   @override
@@ -92,6 +97,7 @@ enum PrintJobStatus {
 /// - esc_pos_bluetooth
 class BluetoothPrinterService extends ChangeNotifier {
   final AppDatabase db;
+  final BlueThermalPrinter _bluetoothPrinter = BlueThermalPrinter.instance;
 
   // Printer state
   BluetoothPrinter? _connectedPrinter;
@@ -117,53 +123,47 @@ class BluetoothPrinterService extends ChangeNotifier {
 
   /// Scan for available Bluetooth printers
   Future<List<BluetoothPrinter>> scanForPrinters() async {
-    print('BluetoothPrinterService: Scanning for printers...');
+    debugPrint('BluetoothPrinterService: Scanning for printers...');
 
     try {
-      // TODO: Integrate with actual Bluetooth scanning
-      // Example with blue_thermal_printer:
-      // List<BluetoothDevice> devices = await BlueThermalPrinter.instance.getBondedDevices();
+      // Get bonded devices (paired Bluetooth devices)
+      final List<BluetoothDevice> devices =
+          await _bluetoothPrinter.getBondedDevices();
 
-      // Mock implementation for framework
-      await Future.delayed(const Duration(seconds: 2));
-
-      _availablePrinters = [
-        BluetoothPrinter(
-          name: 'POS Printer 1',
-          address: '00:11:22:33:44:55',
-          modelName: 'Generic Thermal Printer',
-        ),
-        BluetoothPrinter(
-          name: 'POS Printer 2',
-          address: '00:11:22:33:44:66',
-          modelName: 'Xprinter XP-58',
-        ),
-      ];
+      // Convert to our BluetoothPrinter model
+      _availablePrinters = devices.map((device) {
+        return BluetoothPrinter(
+          name: device.name ?? 'Unknown Device',
+          address: device.address ?? '',
+          modelName: device.name, // Use name as model for now
+          device: device, // Store the device reference
+        );
+      }).toList();
 
       notifyListeners();
-      print(
+      debugPrint(
           'BluetoothPrinterService: Found ${_availablePrinters.length} printers');
       return _availablePrinters;
     } catch (e) {
-      print('BluetoothPrinterService: Scan failed: $e');
+      debugPrint('BluetoothPrinterService: Scan failed: $e');
       return [];
     }
   }
 
   /// Connect to a Bluetooth printer
   Future<bool> connect(BluetoothPrinter printer) async {
-    print('BluetoothPrinterService: Connecting to ${printer.name}...');
+    debugPrint('BluetoothPrinterService: Connecting to ${printer.name}...');
 
     _connectionStatus = PrinterConnectionStatus.connecting;
     notifyListeners();
 
     try {
-      // TODO: Integrate with actual Bluetooth connection
-      // Example with blue_thermal_printer:
-      // await BlueThermalPrinter.instance.connect(printer.device);
+      if (printer.device == null) {
+        throw Exception('No Bluetooth device reference available');
+      }
 
-      // Mock implementation
-      await Future.delayed(const Duration(seconds: 1));
+      // Connect to the device
+      await _bluetoothPrinter.connect(printer.device!);
 
       _connectedPrinter = printer;
       _connectionStatus = PrinterConnectionStatus.connected;
@@ -172,10 +172,10 @@ class BluetoothPrinterService extends ChangeNotifier {
       await _savePrinterSettings(printer);
 
       notifyListeners();
-      print('BluetoothPrinterService: Connected to ${printer.name}');
+      debugPrint('BluetoothPrinterService: Connected to ${printer.name}');
       return true;
     } catch (e) {
-      print('BluetoothPrinterService: Connection failed: $e');
+      debugPrint('BluetoothPrinterService: Connection failed: $e');
       _connectionStatus = PrinterConnectionStatus.error;
       notifyListeners();
       return false;
@@ -186,48 +186,47 @@ class BluetoothPrinterService extends ChangeNotifier {
   Future<void> disconnect() async {
     if (_connectedPrinter == null) return;
 
-    print(
+    debugPrint(
         'BluetoothPrinterService: Disconnecting from ${_connectedPrinter!.name}...');
 
     try {
-      // TODO: Integrate with actual Bluetooth disconnection
-      // Example with blue_thermal_printer:
-      // await BlueThermalPrinter.instance.disconnect();
-
-      await Future.delayed(const Duration(milliseconds: 500));
+      // Disconnect from the device
+      await _bluetoothPrinter.disconnect();
 
       _connectedPrinter = null;
       _connectionStatus = PrinterConnectionStatus.disconnected;
       notifyListeners();
-      print('BluetoothPrinterService: Disconnected');
+      debugPrint('BluetoothPrinterService: Disconnected');
     } catch (e) {
-      print('BluetoothPrinterService: Disconnect failed: $e');
+      debugPrint('BluetoothPrinterService: Disconnect failed: $e');
+      // Still update state even if disconnect fails
+      _connectedPrinter = null;
+      _connectionStatus = PrinterConnectionStatus.disconnected;
+      notifyListeners();
     }
   }
 
   /// Print receipt immediately
   Future<bool> printReceipt(ReceiptModel receipt) async {
     if (!isConnected) {
-      print('BluetoothPrinterService: Cannot print - not connected');
+      debugPrint('BluetoothPrinterService: Cannot print - not connected');
       return false;
     }
 
-    print(
+    debugPrint(
         'BluetoothPrinterService: Printing receipt ${receipt.transactionNumber}...');
 
     try {
       // Generate ESC/POS commands
-      // final commands = receipt.toEscPosCommands();
+      final commands = receipt.toEscPosCommands();
 
-      // TODO: Send commands to printer
-      // Example with blue_thermal_printer:
-      // await BlueThermalPrinter.instance.writeBytes(receipt.toEscPosCommands());
-      await Future.delayed(const Duration(seconds: 1));
+      // Send commands to printer
+      await _bluetoothPrinter.writeBytes(Uint8List.fromList(commands));
 
-      print('BluetoothPrinterService: Receipt printed successfully');
+      debugPrint('BluetoothPrinterService: Receipt printed successfully');
       return true;
     } catch (e) {
-      print('BluetoothPrinterService: Print failed: $e');
+      debugPrint('BluetoothPrinterService: Print failed: $e');
       return false;
     }
   }
@@ -243,7 +242,7 @@ class BluetoothPrinterService extends ChangeNotifier {
     _printQueue.add(job);
     notifyListeners();
 
-    print(
+    debugPrint(
         'BluetoothPrinterService: Receipt queued (${_printQueue.length} in queue)');
 
     // Auto-process queue if connected
@@ -323,7 +322,7 @@ class BluetoothPrinterService extends ChangeNotifier {
   Future<bool> testPrint() async {
     if (!isConnected) return false;
 
-    print('BluetoothPrinterService: Running test print...');
+    debugPrint('BluetoothPrinterService: Running test print...');
 
     try {
       // Create test receipt
@@ -348,7 +347,7 @@ class BluetoothPrinterService extends ChangeNotifier {
 
       return await printReceipt(testReceipt);
     } catch (e) {
-      print('BluetoothPrinterService: Test print failed: $e');
+      debugPrint('BluetoothPrinterService: Test print failed: $e');
       return false;
     }
   }

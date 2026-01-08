@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/store_provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
+import '../db/app_database.dart';
 
 class SystemSettingsScreen extends StatefulWidget {
   const SystemSettingsScreen({super.key});
@@ -241,6 +243,67 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 32),
+
+                // Developer/Debug Section
+                const Divider(),
+                const SizedBox(height: 16),
+                const Text(
+                  'Developer Tools',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Danger Zone: These tools can cause data loss. Use with extreme caution.',
+                  style: TextStyle(color: Colors.red, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+
+                // Database Reset Button
+                OutlinedButton.icon(
+                  onPressed: _showResetDatabaseDialog,
+                  icon: const Icon(Icons.restore, color: Colors.red),
+                  label: const Text(
+                    'Reset Local Database',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'This will delete all local data and create a fresh database. Use this if you encounter database errors. You will need to log in again.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Clean Duplicate Stores Button
+                OutlinedButton.icon(
+                  onPressed: _showCleanDuplicateStoresDialog,
+                  icon:
+                      const Icon(Icons.cleaning_services, color: Colors.orange),
+                  label: const Text(
+                    'Clean Duplicate Stores',
+                    style: TextStyle(color: Colors.orange),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.orange),
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Remove duplicate store entries from the local database. Safe to use if you see stores appearing multiple times in dropdowns.',
+                  style: TextStyle(color: Colors.grey, fontSize: 12),
+                ),
               ],
             ),
           );
@@ -248,6 +311,222 @@ class _SystemSettingsScreenState extends State<SystemSettingsScreen> {
       ),
       bottomNavigationBar: const AppBottomNav(currentRoute: '/system_settings'),
     );
+  }
+
+  void _showResetDatabaseDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.warning, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Reset Database?'),
+          ],
+        ),
+        content: const Text(
+          'This will:\n\n'
+          '• Delete ALL local data\n'
+          '• Log you out\n'
+          '• Create a fresh database\n\n'
+          'You will need to log in again. Any unsynced changes will be lost.\n\n'
+          'Are you absolutely sure?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _performDatabaseReset();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Yes, Reset Database'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCleanDuplicateStoresDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cleaning_services, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Clean Duplicate Stores?'),
+          ],
+        ),
+        content: const Text(
+          'This will remove duplicate store entries from your local database.\n\n'
+          'Only stores with the same server ID will be affected. The oldest entry will be kept.\n\n'
+          'This is safe and will not affect your data on the server.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _performDuplicateStoresCleanup();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Clean Duplicates'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _performDuplicateStoresCleanup() async {
+    try {
+      // Show loading indicator
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Cleaning duplicate stores...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Get database instance
+      final db = Provider.of<AppDatabase>(context, listen: false);
+      final deletedCount = await cleanupDuplicateStores(db);
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Reload store provider to refresh the list
+      final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+      await storeProvider.loadStores();
+
+      // Show success message
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(deletedCount > 0
+              ? 'Cleaned up $deletedCount duplicate store(s)'
+              : 'No duplicate stores found'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if still open
+      if (mounted && Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cleaning duplicates: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _performDatabaseReset() async {
+    try {
+      // Show loading indicator
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Resetting database...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Import and call the reset function
+      await resetDatabase();
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      // Show success and restart app
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          title: const Text('Database Reset Complete'),
+          content: const Text(
+            'The database has been reset successfully. Please restart the app to continue.',
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                // Exit the app - user will need to manually restart
+                Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      // Close loading dialog if open
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
+      // Show error
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Error'),
+          content: Text('Failed to reset database: $e'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget _buildSettingField(

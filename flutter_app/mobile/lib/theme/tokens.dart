@@ -40,10 +40,8 @@ ThemeData buildLightTheme() {
     colorScheme: base.colorScheme.copyWith(
       primary: AppColors.primaryBrand,
       secondary: AppColors.secondaryAccent,
-      background: AppColors.background,
       surface: AppColors.secondaryBackground,
       onPrimary: Colors.white,
-      onBackground: AppColors.textBody,
       onSurface: Colors.black, // Text field text color
     ),
     scaffoldBackgroundColor: AppColors.background,

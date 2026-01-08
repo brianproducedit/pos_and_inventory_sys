@@ -37,7 +37,7 @@ void main() {
     fake.push(ConnectivityResult.wifi);
 
     // Give event loop a moment
-    await Future.delayed(Duration(milliseconds: 50));
+    await Future.delayed(const Duration(milliseconds: 50));
 
     expect(called, isTrue);
 

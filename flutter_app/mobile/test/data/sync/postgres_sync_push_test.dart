@@ -4,7 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:mobile/data/sync/postgres_sync_service.dart';
 import 'package:mobile/data/remote/postgres_api_service.dart';
-import 'package:mobile/data/local/database_helper.dart';
+import 'package:mobile/data/sync/sync_database_helper.dart';
+import 'package:mobile/data/repositories/sync_repository.dart';
+import 'package:mobile/db/app_database.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../test_utils/fake_http_client.dart';
 import '../../test_helpers.dart';
@@ -18,20 +20,27 @@ class _FakeConnectivity implements Connectivity {
   Stream<ConnectivityResult> get onConnectivityChanged => const Stream.empty();
 }
 
+late AppDatabase testDb;
+late SyncDatabaseHelper syncHelper;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    initSqfliteForTests();
-    await DatabaseHelper.initTestDb();
+    testDb = AppDatabase.inMemory();
+    syncHelper = SyncDatabaseHelper(testDb);
+    // Insert a test store for foreign key constraints
+    await testDb
+        .into(testDb.stores)
+        .insert(StoresCompanion.insert(name: 'Test Store'));
   });
 
   tearDown(() async {
-    await DatabaseHelper.resetTestDb();
+    await testDb.close();
   });
 
   test('batch push applies id_map and marks queue as synced', () async {
-    final db = DatabaseHelper();
+    final db = SyncDatabaseHelper(testDb);
     final d = await db.database;
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -129,6 +138,7 @@ void main() {
     final svc = PostgresSyncService(
       db: db,
       api: api,
+      syncRepo: SyncRepository(dbHelper: db),
       httpClient: client,
       connectivity: _FakeConnectivity(),
       secureStorage: FakeFlutterSecureStorage(),

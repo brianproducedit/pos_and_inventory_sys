@@ -349,14 +349,14 @@ class _SyncConflictsScreenState extends State<SyncConflictsScreen> {
       case 'user':
         await (db.update(db.users)
               ..where((u) => u.id.equals(result.conflict.localId)))
-            .write(UsersCompanion(
+            .write(const UsersCompanion(
           syncStatus: drift.Value(SyncStatus.synced),
         ));
         break;
       case 'product':
         await (db.update(db.products)
               ..where((p) => p.id.equals(result.conflict.localId)))
-            .write(ProductsCompanion(
+            .write(const ProductsCompanion(
           syncStatus: drift.Value(SyncStatus.synced),
         ));
         break;

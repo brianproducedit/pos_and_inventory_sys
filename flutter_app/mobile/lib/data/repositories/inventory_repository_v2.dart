@@ -30,20 +30,25 @@ class InventoryRepository {
   }) async {
     await db.transaction(() async {
       // 1. Get current product
-      final product = await (db.select(db.products)
-            ..where((p) => p.id.equals(productId)))
+      final product = await (db.select(
+        db.products,
+      )..where((p) => p.id.equals(productId)))
           .getSingle();
 
       final oldQuantity = product.stockQuantity;
       final newQuantity = oldQuantity + quantity; // quantity can be negative
 
       // 2. Update product stock
-      await (db.update(db.products)..where((p) => p.id.equals(productId)))
-          .write(ProductsCompanion(
-        stockQuantity: Value(newQuantity),
-        syncStatus: Value(SyncStatus.pending),
-        lastUpdatedAt: Value(DateTime.now()),
-      ));
+      await (db.update(
+        db.products,
+      )..where((p) => p.id.equals(productId)))
+          .write(
+        ProductsCompanion(
+          stockQuantity: Value(newQuantity),
+          syncStatus: const Value(SyncStatus.pending),
+          lastUpdatedAt: Value(DateTime.now()),
+        ),
+      );
 
       // 3. Log the inventory change
       await _logInventoryChange(
@@ -57,24 +62,26 @@ class InventoryRepository {
       );
 
       // 4. Enqueue for sync
-      await db.into(db.syncQueue).insert(SyncQueueCompanion.insert(
-            resourceType: 'product',
-            operation: 'update',
-            entityId: Value(product.serverId?.toString() ?? product.clientId),
-            payloadJson: jsonEncode({
-              'id': product.serverId,
-              'client_id': product.clientId,
-              'stock_quantity': newQuantity,
-              'inventory_log': {
-                'type': type.name,
-                'old_quantity': oldQuantity,
-                'new_quantity': newQuantity,
-                'change_amount': quantity,
-                'reason': reason,
-                'user_id': userId,
-              },
-            }),
-          ));
+      await db.into(db.syncQueue).insert(
+            SyncQueueCompanion.insert(
+              resourceType: 'product',
+              operation: 'update',
+              entityId: Value(product.serverId?.toString() ?? product.clientId),
+              payloadJson: jsonEncode({
+                'id': product.serverId,
+                'client_id': product.clientId,
+                'stock_quantity': newQuantity,
+                'inventory_log': {
+                  'type': type.name,
+                  'old_quantity': oldQuantity,
+                  'new_quantity': newQuantity,
+                  'change_amount': quantity,
+                  'reason': reason,
+                  'user_id': userId,
+                },
+              }),
+            ),
+          );
     });
   }
 
@@ -151,18 +158,78 @@ class InventoryRepository {
       throw ArgumentError('Transfer quantity must be positive');
     }
 
-    // TODO: When multi-store support is fully implemented,
-    // this will need to handle products in different stores
-    // For now, just log the transfer
+    if (fromStoreId == toStoreId) {
+      throw ArgumentError('Cannot transfer to the same store');
+    }
 
-    await adjustStock(
-      productId: productId,
-      quantity: -quantity, // Remove from current store
-      userId: userId,
-      reason:
-          'Transferred to store $toStoreId${notes != null ? ': $notes' : ''}',
-      type: InventoryLogType.transfer,
-    );
+    await db.transaction(() async {
+      // 1. Find the product in the source store
+      final sourceProduct = await (db.select(db.products)
+            ..where(
+              (p) => p.id.equals(productId) & p.storeId.equals(fromStoreId),
+            ))
+          .getSingleOrNull();
+
+      if (sourceProduct == null) {
+        throw Exception('Product not found in source store');
+      }
+
+      if (sourceProduct.stockQuantity < quantity) {
+        throw Exception('Insufficient stock in source store');
+      }
+
+      // 2. Find or create the product in the destination store
+      var destProduct = await (db.select(db.products)
+            ..where(
+              (p) => p.id.equals(productId) & p.storeId.equals(toStoreId),
+            ))
+          .getSingleOrNull();
+
+      if (destProduct == null) {
+        // Create product in destination store with same details but zero stock initially
+        final newProductId = await db.into(db.products).insert(
+              ProductsCompanion.insert(
+                name: sourceProduct.name,
+                description: Value(sourceProduct.description),
+                price: Value(sourceProduct.price),
+                stockQuantity: const Value(0), // Will be updated below
+                isActive: Value(sourceProduct.isActive),
+                storeId: toStoreId,
+                sku: Value(sourceProduct.sku),
+                clientId: Value(const Uuid().v4()),
+                syncStatus: const Value(SyncStatus.pending),
+                createdAt: Value(DateTime.now()),
+                lastUpdatedAt: Value(DateTime.now()),
+              ),
+            );
+
+        // Re-fetch the created product
+        destProduct = await (db.select(
+          db.products,
+        )..where((p) => p.id.equals(newProductId)))
+            .getSingle();
+      }
+
+      // 3. Remove stock from source store
+      await adjustStock(
+        productId: sourceProduct.id,
+        quantity: -quantity, // Remove from source store
+        userId: userId,
+        reason:
+            'Transferred to store $toStoreId${notes != null ? ': $notes' : ''}',
+        type: InventoryLogType.transfer,
+      );
+
+      // 4. Add stock to destination store
+      await adjustStock(
+        productId: destProduct.id,
+        quantity: quantity, // Add to destination store
+        userId: userId,
+        reason:
+            'Received from store $fromStoreId${notes != null ? ': $notes' : ''}',
+        type: InventoryLogType.transfer,
+      );
+    });
   }
 
   /// Log inventory change in InventoryLogs table
@@ -177,14 +244,16 @@ class InventoryRepository {
   }) async {
     final clientId = const Uuid().v4();
 
-    await db.into(db.inventoryLogs).insert(InventoryLogsCompanion.insert(
-          clientId: Value(clientId),
-          productId: productId,
-          userId: userId,
-          quantityChange: changeAmount,
-          reason: '$type: $reason',
-          syncStatus: Value(SyncStatus.pending),
-        ));
+    await db.into(db.inventoryLogs).insert(
+          InventoryLogsCompanion.insert(
+            clientId: Value(clientId),
+            productId: productId,
+            userId: userId,
+            quantityChange: changeAmount,
+            reason: '$type: $reason',
+            syncStatus: const Value(SyncStatus.pending),
+          ),
+        );
   }
 
   /// Get inventory logs for a product
@@ -284,8 +353,10 @@ class InventoryRepository {
     );
     final lowStockCount = products.where((p) => p.stockQuantity <= 10).length;
     final outOfStockCount = products.where((p) => p.stockQuantity == 0).length;
-    final totalStockUnits =
-        products.fold<int>(0, (sum, product) => sum + product.stockQuantity);
+    final totalStockUnits = products.fold<int>(
+      0,
+      (sum, product) => sum + product.stockQuantity,
+    );
 
     return InventorySummary(
       totalProducts: totalProducts,

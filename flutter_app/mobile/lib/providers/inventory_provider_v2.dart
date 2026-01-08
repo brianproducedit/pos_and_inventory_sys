@@ -8,7 +8,7 @@ import 'auth_provider.dart';
 /// V2 Inventory Provider - Uses offline-first repositories with streams
 /// Replaces the V1 InventoryProvider with local-first architecture
 class InventoryProviderV2 with ChangeNotifier {
-  final ProductRepository_v2 _productRepo;
+  final ProductRepository _productRepo;
   StoreProvider? _storeProvider;
   AuthProvider? _authProvider;
 
@@ -32,6 +32,33 @@ class InventoryProviderV2 with ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get showInactiveProducts => _showInactiveProducts;
   bool get isLoading => false; // Always false - data from local DB is instant
+
+  // Provide products as maps for backward compatibility
+  List<Map<String, dynamic>> get productsAsMaps => _products
+      .map((p) => {
+            'id': p.id,
+            'name': p.name,
+            'description': p.description,
+            'sku': p.sku,
+            'price': p.price,
+            'stock_quantity': p.stockQuantity,
+            'is_active': p.isActive,
+            'store_id': p.storeId,
+          })
+      .toList();
+
+  List<Map<String, dynamic>> get lowStockAlertsAsMaps => _lowStockAlerts
+      .map((p) => {
+            'id': p.id,
+            'name': p.name,
+            'description': p.description,
+            'sku': p.sku,
+            'price': p.price,
+            'stock_quantity': p.stockQuantity,
+            'is_active': p.isActive,
+            'store_id': p.storeId,
+          })
+      .toList();
 
   /// Set store provider and listen to store changes
   void setStoreProvider(StoreProvider storeProvider) {
@@ -74,7 +101,7 @@ class InventoryProviderV2 with ChangeNotifier {
     final storeId = _parseStoreId(_storeProvider?.currentStore?['id']);
 
     // Superadmin sees all products, others see store-filtered products
-    final stream = (_authProvider?.role == 'superadmin')
+    final stream = (_authProvider?.role == UserRole.superadmin)
         ? _productRepo.watchAll()
         : _productRepo.watchAll(storeId: storeId);
 
@@ -190,7 +217,11 @@ class InventoryProviderV2 with ChangeNotifier {
     }
   }
 
-  /// Delete product (soft delete - marks as inactive)
+  /// Delete product (hard delete).
+  ///
+  /// This performs a permanent deletion locally and will enqueue a delete
+  /// operation for the server if the product already exists on the server.
+  /// Deletion will fail if the product is referenced by existing sales.
   Future<void> deleteProduct(int productId) async {
     _errorMessage = null;
     try {

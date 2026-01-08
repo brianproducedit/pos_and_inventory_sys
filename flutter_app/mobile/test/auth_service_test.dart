@@ -3,12 +3,10 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/testing.dart';
 import 'test_utils/fake_http_client.dart';
-import 'test_helpers.dart';
 import 'package:mobile/services/auth_service.dart';
-import 'package:mobile/data/local/database_helper.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:mobile/db/app_database.dart';
+import 'package:drift/drift.dart' hide isNull;
 
 class TestSecureStorage extends FlutterSecureStorage {
   final Map<String, String> _store = {};
@@ -56,16 +54,17 @@ class TestSecureStorage extends FlutterSecureStorage {
       _store.remove(key);
 }
 
+late AppDatabase testDb;
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUp(() async {
-    initSqfliteForTests();
-    await DatabaseHelper.initTestDb();
+    testDb = AppDatabase.inMemory();
   });
 
   tearDown(() async {
-    await DatabaseHelper.resetTestDb();
+    await testDb.close();
   });
 
   test('login stores token and user in local DB', () async {
@@ -81,7 +80,7 @@ void main() {
     final mockClient = builder.build();
 
     final fakeStore = TestSecureStorage();
-    final auth = AuthService(mockClient, fakeStore, DatabaseHelper());
+    final auth = AuthService(mockClient, fakeStore, testDb);
 
     final res = await auth.login('u', 'p');
     expect(res['access_token'], 'tok-123');
@@ -89,11 +88,9 @@ void main() {
     final token = await auth.getToken();
     expect(token, 'tok-123');
 
-    final db = await DatabaseHelper().database;
-    final rows = await db.query('users');
-    expect(rows.length, 1);
-    expect(rows.first['server_id'], 9);
-    expect(rows.first['email'], 't@example.com');
+    final users = await testDb.select(testDb.users).get();
+    expect(users.length, 1);
+    expect(users.first.serverId, 9);
   });
 
   test('login rolls back token if fetching user info fails', () async {
@@ -107,7 +104,7 @@ void main() {
     final mockClient = builder.build();
 
     final fakeStore = TestSecureStorage();
-    final auth = AuthService(mockClient, fakeStore, DatabaseHelper());
+    final auth = AuthService(mockClient, fakeStore, testDb);
 
     // Expect that login fails with a thrown exception due to user info fetch failure
     expect(() async => await auth.login('u', 'p'), throwsA(isA<Exception>()));
@@ -123,42 +120,25 @@ void main() {
     await fakeStore.write(key: 'username', value: 'testuser');
     await fakeStore.write(key: 'password', value: 'testpass');
 
-    final dbHelper = DatabaseHelper();
-    final db = await dbHelper.database;
-    await db.insert('users', {
-      'server_id': 1,
-      'username': 'testuser',
-      'name': 'Test User',
-      'email': 'test@example.com',
-      'role': 'admin',
-      'store_id': 1,
-      'created_at': DateTime.now().toIso8601String(),
-      'updated_at': DateTime.now().toIso8601String(),
-      'last_synced': DateTime.now().millisecondsSinceEpoch,
-    });
+    // Insert test user using Drift
+    await testDb.into(testDb.users).insert(UsersCompanion.insert(
+          serverId: const Value(1),
+          username: 'testuser',
+          passwordHash: 'hash',
+          fullName: const Value('Test User'),
+          role: UserRole.admin,
+          storeId: const Value(1),
+        ));
 
-    final auth = AuthService(null, fakeStore, dbHelper);
-    final success = await auth.offlineLogin(dbHelper);
+    final auth = AuthService(null, fakeStore, testDb);
+    final success = await auth.offlineLogin(testDb);
     expect(success, true);
   });
 
   test('offlineLogin fails without stored credentials', () async {
     final fakeStore = TestSecureStorage();
-    final auth = AuthService(null, fakeStore, DatabaseHelper());
-    final success = await auth.offlineLogin(DatabaseHelper());
+    final auth = AuthService(null, fakeStore, testDb);
+    final success = await auth.offlineLogin(testDb);
     expect(success, false);
   });
-}
-
-class _BadDbHelper {
-  Future<dynamic> get database async {
-    return _BadDb();
-  }
-}
-
-class _BadDb {
-  Future<int> insert(String table, Map<String, Object?> values,
-      {dynamic conflictAlgorithm}) async {
-    throw Exception('DB insert failed');
-  }
 }

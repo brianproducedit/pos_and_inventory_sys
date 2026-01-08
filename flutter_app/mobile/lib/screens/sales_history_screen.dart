@@ -1,28 +1,24 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
-import 'package:mobile/services/sales_service.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
-import 'package:mobile/data/repositories/transaction_repository.dart';
+import 'package:mobile/data/repositories/sale_repository_v2.dart';
+import 'package:mobile/db/app_database.dart';
 
 class SalesHistoryScreen extends StatefulWidget {
-  final SalesService? salesService;
-  final TransactionRepository? transactionRepository;
-  const SalesHistoryScreen(
-      {super.key, this.salesService, this.transactionRepository});
+  final SaleRepository? saleRepository;
+  const SalesHistoryScreen({super.key, this.saleRepository});
 
   @override
   State<SalesHistoryScreen> createState() => _SalesHistoryScreenState();
 }
 
 class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
-  final SalesService _salesService = SalesService();
   List<Map<String, dynamic>> _sales = [];
   bool _isLoading = true;
   String? _errorMessage;
@@ -58,8 +54,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
       // Ensure non-admin users are not left on an implicit All Stores view
       final authProvider = context.read<AuthProvider>();
       if (storeProvider.currentStore == null &&
-          authProvider.role != 'superadmin' &&
-          authProvider.role != 'admin') {
+          authProvider.role != UserRole.superadmin &&
+          authProvider.role != UserRole.admin) {
         debugPrint(
             'SalesHistoryScreen: cashier with no current store, waiting for myStores...');
         // Await myStores to be loaded
@@ -99,74 +95,34 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
 
       debugPrint('SalesHistoryScreen._loadSalesHistory: storeId=$storeId');
 
-      // Track server_ids from offline transactions for de-duplication with online sales
-      final Set<int> offlineServerIds = {};
-
-      // First try to load offline transactions (filtered by store)
-      if (widget.transactionRepository != null) {
-        try {
-          final offlineTransactions = await widget.transactionRepository!
-              .getAllTransactions(storeId: storeId);
-          debugPrint(
-              'SalesHistoryScreen: loaded ${offlineTransactions.length} offline transactions for storeId=$storeId');
-          // Convert offline transactions to sales format
-          for (final tx in offlineTransactions) {
-            // Track server_id for de-duplication (if synced)
-            if (tx.serverId != null) {
-              offlineServerIds.add(tx.serverId!);
-            }
-
-            allSales.add({
-              'id': tx.serverId ?? tx.id, // Prefer server_id for display
-              'local_id': tx.id, // Keep local id for reference
-              'server_id': tx.serverId, // Track sync status
-              'total': tx.totalAmount,
-              'payment_method': tx.paymentMethod,
-              'created_at': tx.createdAt != null
-                  ? DateTime.fromMillisecondsSinceEpoch(tx.createdAt!)
-                      .toIso8601String()
-                  : DateTime.now().toIso8601String(),
-              'transaction_number':
-                  tx.serverId != null ? 'TXN-${tx.serverId}' : 'LOCAL-${tx.id}',
-              'is_offline':
-                  tx.serverId == null, // Only truly offline if not synced
-              'is_synced': tx.serverId != null,
-              'store_id': tx.storeId,
-            });
-          }
-        } catch (e) {
-          debugPrint('Failed to load offline transactions: $e');
-        }
-      }
-
-      // Then try to load online sales
+      // Load sales from V2 repository (fully offline)
+      final saleRepository =
+          widget.saleRepository ?? context.read<SaleRepository>();
       try {
-        final service = widget.salesService ?? SalesService();
+        final sales = await saleRepository.getAllSales(storeId: storeId);
         debugPrint(
-            'SalesHistoryScreen: fetching online sales for storeId=$storeId');
-        final onlineSales = await service.getSales(storeId: storeId);
-        debugPrint(
-            'SalesHistoryScreen: loaded ${onlineSales.length} online sales');
+            'SalesHistoryScreen: loaded ${sales.length} sales for storeId=$storeId');
 
-        // Add online sales, avoiding duplicates using server_id
-        for (final sale in onlineSales) {
-          final saleId = sale['id'] as int?;
-          // Skip if we already have this sale from offline storage (synced transaction)
-          if (saleId != null && offlineServerIds.contains(saleId)) {
-            debugPrint(
-                'SalesHistoryScreen: skipping duplicate sale id=$saleId (already in offline)');
-            continue;
-          }
-          allSales.add({...sale, 'is_offline': false, 'is_synced': true});
+        // Convert Sale entities to display format
+        for (final sale in sales) {
+          allSales.add({
+            'id': sale.serverId ?? sale.id, // Prefer server_id for display
+            'local_id': sale.id, // Keep local id for reference
+            'server_id': sale.serverId, // Track sync status
+            'total': sale.totalAmount,
+            'payment_method': sale.paymentMethod,
+            'created_at': sale.createdAt.toIso8601String(),
+            'transaction_number': sale.transactionNumber,
+            'is_offline':
+                sale.serverId == null, // Only truly offline if not synced
+            'is_synced': sale.serverId != null,
+            'store_id': sale.storeId,
+          });
         }
       } catch (e) {
-        debugPrint('Failed to load online sales: $e');
-        // Continue with offline transactions only
+        debugPrint('Failed to load sales: $e');
+        _errorMessage = 'Failed to load sales: $e';
       }
-
-      // Sort by creation date (newest first)
-      allSales.sort((a, b) => DateTime.parse(b['created_at'])
-          .compareTo(DateTime.parse(a['created_at'])));
 
       if (!mounted) return;
       setState(() {
@@ -197,8 +153,8 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
         ),
         actions: [
           // Allow admins to quick-switch stores here
-          if (context.read<AuthProvider>().role == 'superadmin' ||
-              context.read<AuthProvider>().role == 'admin')
+          if (context.read<AuthProvider>().role == UserRole.superadmin ||
+              context.read<AuthProvider>().role == UserRole.admin)
             const StoreQuickAction(),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -278,9 +234,12 @@ class _SalesHistoryScreenState extends State<SalesHistoryScreen> {
             ),
             trailing: const Icon(Icons.chevron_right),
             onTap: () {
-              final saleId = sale['id'];
-              if (saleId != null) {
-                Navigator.of(context).pushNamed('/receipt', arguments: saleId);
+              // Use local_id for lookups (route expects local DB id), display id may be server id
+              final localId = sale['local_id'] as int? ?? sale['id'] as int?;
+              debugPrint(
+                  'SalesHistoryScreen: opening receipt for local_id=$localId (display id=${sale['id']})');
+              if (localId != null) {
+                Navigator.of(context).pushNamed('/receipt', arguments: localId);
               } else {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Invalid sale data')),

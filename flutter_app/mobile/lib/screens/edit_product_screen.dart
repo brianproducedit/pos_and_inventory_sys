@@ -4,6 +4,8 @@ import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
+import 'package:mobile/db/app_database.dart';
 
 class EditProductScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -63,6 +65,13 @@ class _EditProductScreenState extends State<EditProductScreen> {
             description: _descriptionController.text.trim(),
             isActive: _isActive,
           );
+
+      // Trigger immediate sync after updating product
+      debugPrint('🔄 Product updated locally, triggering immediate sync...');
+      if (mounted) {
+        context.read<SyncProvider>().sync();
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Product updated successfully!')),
@@ -128,7 +137,8 @@ class _EditProductScreenState extends State<EditProductScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
 
-    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+    if (authProvider.role != UserRole.superadmin &&
+        authProvider.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(

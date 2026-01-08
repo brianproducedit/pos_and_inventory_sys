@@ -57,6 +57,7 @@ class UserResponse(UserBase):
 class ProductBase(BaseModel):
     name: str
     description: Optional[str] = None
+    sku: Optional[str] = None
     price: float
     stock_quantity: int = 0
     is_active: bool = True
@@ -159,6 +160,7 @@ class AuditLogBase(BaseModel):
 class AuditLogResponse(AuditLogBase):
     id: int
     user_id: Optional[int] = None
+    username: Optional[str] = None
     store_id: Optional[int] = None
     timestamp: datetime
 

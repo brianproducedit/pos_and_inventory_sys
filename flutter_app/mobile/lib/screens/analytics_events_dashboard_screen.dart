@@ -8,6 +8,7 @@ import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_badge.dart';
+import 'package:mobile/db/app_database.dart';
 import 'dart:math';
 
 class AnalyticsEventsDashboardScreen extends StatefulWidget {
@@ -82,7 +83,7 @@ class _AnalyticsEventsDashboardScreenState
     final authProvider = context.watch<AuthProvider>();
     final role = authProvider.role;
 
-    if (role != 'superadmin' && role != 'admin') {
+    if (role != UserRole.superadmin && role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Analytics Dashboard')),
         body: const Center(child: Text('Access denied')),
@@ -105,8 +106,8 @@ class _AnalyticsEventsDashboardScreenState
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: StoreIndicator(store: storeProvider.currentStore),
                 ),
-                if (context.watch<AuthProvider>().role == 'superadmin' ||
-                    context.watch<AuthProvider>().role == 'admin')
+                if (context.watch<AuthProvider>().role == UserRole.superadmin ||
+                    context.watch<AuthProvider>().role == UserRole.admin)
                   const StoreQuickAction(),
               ],
             ),

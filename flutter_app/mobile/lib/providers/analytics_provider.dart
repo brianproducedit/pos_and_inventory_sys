@@ -2,24 +2,21 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:mobile/services/time_service.dart';
-import '../services/sales_service.dart';
 import '../services/analytics_service.dart';
-import '../data/local/database_helper.dart';
+import '../data/repositories/analytics_repository_v2.dart' as v2;
+import '../db/app_database.dart';
 import 'store_provider.dart';
 import 'auth_provider.dart';
 
 class AnalyticsProvider with ChangeNotifier {
-  final SalesService _salesService;
+  final v2.AnalyticsRepository _analyticsRepo;
   final AnalyticsService _analyticsService;
-  final DatabaseHelper _db;
 
-  AnalyticsProvider(
-      {SalesService? salesService,
-      AnalyticsService? analyticsService,
-      DatabaseHelper? db})
-      : _salesService = salesService ?? SalesService(),
-        _analyticsService = analyticsService ?? AnalyticsService(),
-        _db = db ?? DatabaseHelper();
+  AnalyticsProvider({
+    required v2.AnalyticsRepository analyticsRepository,
+    AnalyticsService? analyticsService,
+  })  : _analyticsRepo = analyticsRepository,
+        _analyticsService = analyticsService ?? AnalyticsService();
 
   Map<String, dynamic> _salesData = {};
   List<Map<String, dynamic>> _recentSales = [];
@@ -155,7 +152,7 @@ class AnalyticsProvider with ChangeNotifier {
 
   Future<void> loadCrossStoreAnalytics() async {
     // Only superadmin can load cross-store analytics
-    if (_authProvider?.role != 'superadmin') {
+    if (_authProvider?.role != UserRole.superadmin) {
       _errorMessage =
           'Access denied: Cross-store analytics requires superadmin privileges';
       notifyListeners();
@@ -168,16 +165,51 @@ class AnalyticsProvider with ChangeNotifier {
 
   Future<void> loadStoreComparisonAnalytics() async {
     // Only superadmin can compare stores
-    if (_authProvider?.role != 'superadmin') {
+    if (_authProvider?.role != UserRole.superadmin) {
       _errorMessage =
           'Access denied: Store comparison requires superadmin privileges';
       notifyListeners();
       return;
     }
 
-    // This would load comparative analytics across all stores
-    // For now, we'll load global analytics
-    await loadAnalytics(storeId: null);
+    _isLoading = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      // Calculate date range (last 30 days)
+      final endDate = TimeService.instance.now();
+      final startDate = endDate.subtract(const Duration(days: 30));
+
+      // Get store comparison data from V2 repository
+      final storePerformance = await _analyticsRepo.getStoreComparison(
+        startDate: startDate,
+        endDate: endDate,
+      );
+
+      // Store in a special field for store comparison view
+      _salesData = {
+        'store_comparison': storePerformance
+            .map((s) => {
+                  'store_id': s.storeId,
+                  'store_name': s.storeName,
+                  'total_sales': s.totalSales,
+                  'total_revenue': s.totalRevenue,
+                  'average_order_value': s.averageOrderValue,
+                })
+            .toList(),
+      };
+
+      debugPrint(
+          'AnalyticsProvider: loaded comparison for ${storePerformance.length} stores');
+    } catch (e) {
+      _errorMessage = _getReadableErrorMessage(e);
+      debugPrint('Error loading store comparison: $e');
+      _salesData = {'store_comparison': []};
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> loadAnalytics({int? storeId}) async {
@@ -189,84 +221,109 @@ class AnalyticsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      // Fetch server analytics with proper timeout
-      final data =
-          await _salesService.getSalesAnalytics(storeId: storeId).timeout(
-        const Duration(seconds: 15),
-        onTimeout: () {
-          throw TimeoutException('Analytics request timed out');
-        },
+      // Calculate date range for analytics (last 30 days by default)
+      final endDate = TimeService.instance.now();
+      final startDate = endDate.subtract(const Duration(days: 30));
+
+      // Fetch summary from local repository (fully offline)
+      final summary = await _analyticsRepo.getSalesSummary(
+        storeId: storeId,
+        startDate: startDate,
+        endDate: endDate,
       );
 
-      // Fetch local offline stats to supplement server analytics
-      final localStats = await _db.getLocalTransactionStats(storeId: storeId);
-      final unsyncedCount = localStats['unsynced_count'] as int? ?? 0;
-      final unsyncedRevenue = localStats['unsynced_revenue'] as double? ?? 0.0;
+      // Fetch top products
+      final topProducts = await _analyticsRepo.getTopProducts(
+        storeId: storeId,
+        startDate: startDate,
+        endDate: endDate,
+        limit: 10,
+      );
 
-      // Combine server + unsynced local data for accurate totals
-      final serverSales = data['total_sales'] as int? ?? 0;
-      final serverRevenue = (data['total_revenue'] as num?)?.toDouble() ?? 0.0;
+      // Fetch recent sales
+      final recentSales = await _analyticsRepo.getRecentSales(
+        storeId: storeId,
+        limit: 10,
+      );
 
-      final totalSales = serverSales + unsyncedCount;
-      final totalRevenue = serverRevenue + unsyncedRevenue;
+      // Fetch low stock alerts
+      final lowStock = await _analyticsRepo.getLowStockProducts(
+        storeId: storeId,
+        threshold: 10,
+      );
 
+      // Fetch sales by period for daily sales chart
+      final salesByPeriod = await _analyticsRepo.getSalesByPeriod(
+        storeId: storeId,
+        startDate: startDate,
+        endDate: endDate,
+        granularity: 'day',
+      );
+
+      // Build response data structure
       _salesData = {
-        'total_sales': totalSales,
-        'total_revenue': totalRevenue,
-        'average_sale': totalSales > 0 ? totalRevenue / totalSales : 0.0,
-        'daily_sales': data['daily_sales'] ?? [],
-        // Track unsynced for UI display (optional)
-        'unsynced_sales': unsyncedCount,
-        'unsynced_revenue': unsyncedRevenue,
+        'total_sales': summary.totalSales,
+        'total_revenue': summary.totalRevenue,
+        'average_sale': summary.averageOrderValue,
+        'daily_sales': salesByPeriod
+            .map((p) => {
+                  'date': p.period,
+                  'count': p.count,
+                  'revenue': p.revenue,
+                })
+            .toList(),
+        'cash_sales': summary.cashSales,
+        'card_sales': summary.cardSales,
+        'mobile_sales': summary.mobileSales,
         'is_offline': false,
       };
-      _recentSales =
-          List<Map<String, dynamic>>.from(data['recent_sales'] ?? []);
-      _topProducts =
-          List<Map<String, dynamic>>.from(data['top_products'] ?? []);
-      _inventoryAlerts =
-          List<Map<String, dynamic>>.from(data['inventory_alerts'] ?? []);
+
+      _recentSales = recentSales
+          .map((sale) => {
+                'id': sale.id,
+                'transaction_number': sale.transactionNumber,
+                'total_amount': sale.totalAmount,
+                'payment_method': sale.paymentMethod,
+                'created_at': sale.createdAt.toIso8601String(),
+                'store_id': sale.storeId,
+              })
+          .toList();
+
+      _topProducts = topProducts
+          .map((p) => {
+                'product_id': p.productId,
+                'product_name': p.productName,
+                'quantity_sold': p.quantitySold,
+                'revenue': p.revenue,
+              })
+          .toList();
+
+      _inventoryAlerts = lowStock
+          .map((p) => {
+                'id': p.id,
+                'name': p.name,
+                'stock_quantity': p.stockQuantity,
+                'price': p.price,
+              })
+          .toList();
 
       debugPrint(
-          'AnalyticsProvider.loadAnalytics: server=$serverSales, unsynced=$unsyncedCount, total=$totalSales');
+          'AnalyticsProvider.loadAnalytics: loaded ${summary.totalSales} sales, ${topProducts.length} top products, ${lowStock.length} alerts');
     } catch (e) {
       final userFriendlyMessage = _getReadableErrorMessage(e);
       debugPrint('Error loading analytics: $e');
+      _errorMessage = userFriendlyMessage;
 
-      // Fallback to local-only stats when server is unavailable
-      try {
-        final localStats = await _db.getLocalTransactionStats(storeId: storeId);
-        _salesData = {
-          'total_sales': localStats['total_transactions'] ?? 0,
-          'total_revenue': localStats['total_revenue'] ?? 0.0,
-          'average_sale': localStats['average_transaction'] ?? 0.0,
-          'daily_sales': [],
-          'unsynced_sales': localStats['unsynced_count'] ?? 0,
-          'unsynced_revenue': localStats['unsynced_revenue'] ?? 0.0,
-          'is_offline': true, // Mark as offline-only data
-        };
-        _recentSales = [];
-        _topProducts = [];
-        _inventoryAlerts = [];
-        // Set a softer error message since we have fallback data
-        _errorMessage = userFriendlyMessage;
-        _errorMessage = null;
-        debugPrint(
-            'AnalyticsProvider.loadAnalytics: using offline fallback data');
-      } catch (localError) {
-        debugPrint(
-            'AnalyticsProvider.loadAnalytics: local fallback also failed: $localError');
-        // Set default values if both API and local fail
-        _salesData = {
-          'total_sales': 0,
-          'total_revenue': 0.0,
-          'average_sale': 0.0,
-          'daily_sales': [],
-        };
-        _recentSales = [];
-        _topProducts = [];
-        _inventoryAlerts = [];
-      }
+      // Set default values on error
+      _salesData = {
+        'total_sales': 0,
+        'total_revenue': 0.0,
+        'average_sale': 0.0,
+        'daily_sales': [],
+      };
+      _recentSales = [];
+      _topProducts = [];
+      _inventoryAlerts = [];
     } finally {
       _isLoading = false;
       notifyListeners();

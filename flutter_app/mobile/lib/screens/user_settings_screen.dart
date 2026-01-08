@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
+import '../providers/sync_provider.dart';
 import 'package:mobile/widgets/primary_button.dart';
 
 class UserSettingsScreen extends StatefulWidget {
@@ -249,6 +250,8 @@ class _UserSettingsScreenState extends State<UserSettingsScreen> {
 
     final success = await settingsProvider.updateUserSettings(newSettings);
     if (success && mounted) {
+      // Trigger sync after settings update
+      context.read<SyncProvider>().sync();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Settings saved successfully')),
       );

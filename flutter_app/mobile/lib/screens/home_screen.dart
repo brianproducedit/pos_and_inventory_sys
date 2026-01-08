@@ -1,8 +1,6 @@
-import 'dart:async';
-import 'package:flutter/foundation.dart';
-
 import 'package:flutter/material.dart';
-import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
@@ -15,6 +13,7 @@ import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/metric_card.dart';
 import 'package:mobile/widgets/offline_indicator.dart';
 import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/db/app_database.dart' show UserRole;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,17 +30,36 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+      final syncProvider = Provider.of<SyncProvider>(context, listen: false);
 
-      if (authProvider.role == 'superadmin' || authProvider.role == 'admin') {
+      // Set up sync completion callback to reload stores
+      syncProvider.onSyncComplete = () async {
+        debugPrint(
+            '📥 HomeScreen: Sync complete - reloading stores and user data');
+        storeProvider.loadMyStores();
+        storeProvider.loadStores();
+
+        // Refresh current user data in case it was updated during sync
+        await authProvider.refreshCurrentUser();
+      };
+
+      // Ensure stores are loaded (they may already be loaded from login)
+      if (storeProvider.stores.isEmpty) {
+        debugPrint('📥 HomeScreen: No stores loaded, initializing...');
+        await storeProvider.loadStores();
+      }
+
+      if (authProvider.role == UserRole.superadmin ||
+          authProvider.role == UserRole.admin) {
         context.read<AnalyticsProvider>().loadAnalytics();
       }
 
-      // Ensure inventory provider has up-to-date alerts for quick summary card
+      // Initialize inventory provider for low stock alerts
       try {
-        final inventoryProvider = context.read<InventoryProvider>();
+        final inventoryProvider = context.read<InventoryProviderV2>();
         inventoryProvider.setAuthProvider(authProvider);
         inventoryProvider.setStoreProvider(storeProvider);
-        unawaited(inventoryProvider.loadLowStockAlerts());
+        // V2 uses streams - no manual load needed
       } catch (e) {
         debugPrint('InventoryProvider not present on HomeScreen init: $e');
       }
@@ -77,7 +95,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           const OfflineStatusIcon(),
-          if (role == 'superadmin' || role == 'admin') const StoreQuickAction(),
+          if (role == UserRole.superadmin || role == UserRole.admin)
+            const StoreQuickAction(),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () {
@@ -98,9 +117,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // All Stores banner (visible when no specific store selected)
             if (storeProvider.currentStore == null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12.0),
-                child: const AllStoresBanner(),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 12.0),
+                child: AllStoresBanner(),
               ),
 
             // Welcome Section
@@ -114,7 +133,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 24),
 
             // Summary Cards (for admin/superadmin)
-            if (role == 'superadmin' || role == 'admin') _buildSummarySection(),
+            if (role == UserRole.superadmin || role == UserRole.admin)
+              _buildSummarySection(),
 
             const SizedBox(height: 24),
 
@@ -177,7 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildQuickActionsSection(String? role) {
+  Widget _buildQuickActionsSection(UserRole? role) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -213,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
         // Safely read inventory counts (may not be present in some tests)
         int lowStock = 0;
         try {
-          lowStock = context.watch<InventoryProvider>().lowStockCount;
+          lowStock = context.watch<InventoryProviderV2>().lowStockCount;
         } catch (_) {
           lowStock = 0;
         }
@@ -362,7 +382,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _getQuickActions(String? role) {
+  List<Widget> _getQuickActions(UserRole? role) {
     List<Widget> actions = [];
 
     // POS action (available to all roles)
@@ -396,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     // Inventory actions (admin/superadmin only)
-    if (role == 'superadmin' || role == 'admin') {
+    if (role == UserRole.superadmin || role == UserRole.admin) {
       actions.add(
         _buildQuickActionCard(
           'Add Product',
@@ -435,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Admin and Superadmin specific actions
-    if (role == 'admin' || role == 'superadmin') {
+    if (role == UserRole.admin || role == UserRole.superadmin) {
       actions.add(
         _buildQuickActionCard(
           'Cashier Management',
@@ -447,7 +467,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     // Superadmin specific actions
-    if (role == 'superadmin') {
+    if (role == UserRole.superadmin) {
       actions.add(
         _buildQuickActionCard(
           'Store Management',
@@ -499,52 +519,52 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  IconData _getRoleIcon(String? role) {
+  IconData _getRoleIcon(UserRole? role) {
     switch (role) {
-      case 'superadmin':
+      case UserRole.superadmin:
         return Icons.admin_panel_settings;
-      case 'admin':
+      case UserRole.admin:
         return Icons.business;
-      case 'cashier':
+      case UserRole.cashier:
         return Icons.point_of_sale;
       default:
         return Icons.person;
     }
   }
 
-  Color _getRoleColor(String? role) {
+  Color _getRoleColor(UserRole? role) {
     switch (role) {
-      case 'superadmin':
+      case UserRole.superadmin:
         return AppColors.secondaryAccent;
-      case 'admin':
+      case UserRole.admin:
         return AppColors.primaryBrand;
-      case 'cashier':
+      case UserRole.cashier:
         return AppColors.primaryAction;
       default:
         return Colors.grey;
     }
   }
 
-  String _getRoleDisplayName(String? role) {
+  String _getRoleDisplayName(UserRole? role) {
     switch (role) {
-      case 'superadmin':
+      case UserRole.superadmin:
         return 'Super Administrator';
-      case 'admin':
+      case UserRole.admin:
         return 'Store Administrator';
-      case 'cashier':
+      case UserRole.cashier:
         return 'Cashier';
       default:
         return 'User';
     }
   }
 
-  String _getWelcomeMessage(String? role) {
+  String _getWelcomeMessage(UserRole? role) {
     switch (role) {
-      case 'superadmin':
+      case UserRole.superadmin:
         return 'Manage stores, users, and oversee all operations.';
-      case 'admin':
+      case UserRole.admin:
         return 'Manage your store inventory and staff.';
-      case 'cashier':
+      case UserRole.cashier:
         return 'Process sales and serve customers.';
       default:
         return 'Welcome to the POS system.';

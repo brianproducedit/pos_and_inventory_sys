@@ -52,7 +52,10 @@ class PrimaryTextField extends StatelessWidget {
         border: const OutlineInputBorder(),
         enabledBorder: OutlineInputBorder(
           borderSide: BorderSide(
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.12)),
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.12 * 255)),
         ),
         focusedBorder: OutlineInputBorder(
           borderSide: BorderSide(

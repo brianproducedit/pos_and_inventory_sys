@@ -3,8 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:drift/drift.dart';
 import '../../config/env.dart';
-import '../local/database_helper.dart';
+import '../../db/app_database.dart';
 
 /// Exception for API-related errors with connection context
 class ApiConnectionException implements Exception {
@@ -49,24 +50,30 @@ class PostgresApiService {
     int attempt = 0;
     Exception? lastException;
 
+    debugPrint(
+        '🌐 API: ${context ?? "Request"} to $baseUrl (max retries: $maxRetries)');
+
     while (attempt < maxRetries) {
       attempt++;
       try {
         debugPrint(
-            'PostgresApiService: ${context ?? 'request'} attempt $attempt/$maxRetries');
+            '🔄 API: ${context ?? 'request'} attempt $attempt/$maxRetries');
         final response = await request().timeout(timeout);
+
+        debugPrint(
+            '✅ API: ${context ?? 'request'} completed - Status ${response.statusCode}');
 
         // Retry on server errors (5xx)
         if (response.statusCode >= 500 && attempt < maxRetries) {
           debugPrint(
-              'PostgresApiService: Server error ${response.statusCode}, retrying...');
+              '⚠️ API: Server error ${response.statusCode}, retrying...');
           await Future.delayed(Duration(milliseconds: 300 * attempt));
           continue;
         }
 
         return response;
       } on TimeoutException catch (e) {
-        debugPrint('PostgresApiService: Timeout on attempt $attempt: $e');
+        debugPrint('⏱️ API: Timeout on attempt $attempt: $e');
         lastException = ApiConnectionException(
           'Request timed out',
           isTimeout: true,
@@ -76,7 +83,7 @@ class PostgresApiService {
           continue;
         }
       } on SocketException catch (e) {
-        debugPrint('PostgresApiService: Socket error on attempt $attempt: $e');
+        debugPrint('🔌 API: Socket error on attempt $attempt: $e');
         lastException = ApiConnectionException(
           'Connection failed: ${e.message}',
           isConnectionLost: true,
@@ -86,7 +93,7 @@ class PostgresApiService {
           continue;
         }
       } on HttpException catch (e) {
-        debugPrint('PostgresApiService: HTTP error on attempt $attempt: $e');
+        debugPrint('❌ API: HTTP error on attempt $attempt: $e');
         final isConnectionClosed = e.message.contains('Connection closed') ||
             e.message.contains('closed before');
         lastException = ApiConnectionException(
@@ -98,7 +105,7 @@ class PostgresApiService {
           continue;
         }
       } on http.ClientException catch (e) {
-        debugPrint('PostgresApiService: Client error on attempt $attempt: $e');
+        debugPrint('❌ API: Client error on attempt $attempt: $e');
         lastException = ApiConnectionException(
           'Connection error: ${e.message}',
           isConnectionLost: true,
@@ -108,8 +115,7 @@ class PostgresApiService {
           continue;
         }
       } catch (e) {
-        debugPrint(
-            'PostgresApiService: Unexpected error on attempt $attempt: $e');
+        debugPrint('❌ API: Unexpected error on attempt $attempt: $e');
         if (e.toString().contains('Connection') && attempt < maxRetries) {
           lastException = ApiConnectionException('Connection error: $e',
               isConnectionLost: true);
@@ -151,8 +157,9 @@ class PostgresApiService {
     if (pres.statusCode == 200) {
       final parsed = jsonDecode(pres.body);
       if (parsed is List) return {'products': parsed};
-      if (parsed is Map<String, dynamic> && parsed['products'] is List)
+      if (parsed is Map<String, dynamic> && parsed['products'] is List) {
         return {'products': parsed['products']};
+      }
     }
 
     throw ApiConnectionException(
@@ -160,59 +167,53 @@ class PostgresApiService {
         statusCode: res.statusCode);
   }
 
-  /// Fetch initial data and populate the provided `DatabaseHelper` in a single transaction.
+  /// Fetch initial data and populate the provided `AppDatabase` using Drift.
   Future<void> fetchInitialDataAndSeedDB(
-      {required String token, required DatabaseHelper dbHelper}) async {
+      {required String token, required AppDatabase db}) async {
     debugPrint('PostgresApiService: fetchInitialDataAndSeedDB start');
     final data = await fetchInitialData(token: token);
     debugPrint('PostgresApiService: fetched initial data keys=${data.keys}');
-    final db = await dbHelper.database;
 
     final products =
         (data['products'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     debugPrint('PostgresApiService: seeding ${products.length} products');
 
-    await db.transaction((txn) async {
+    await db.transaction(() async {
       debugPrint('PostgresApiService: transaction started');
-      final existing = await txn.query('products', limit: 1);
-      if (existing.isNotEmpty) {
-        // merge by server_id
-        for (final p in products) {
-          final serverId = p['id'] as int?;
-          if (serverId == null) continue;
-          final rows = await txn
-              .query('products', where: 'server_id = ?', whereArgs: [serverId]);
-          final now = DateTime.now().millisecondsSinceEpoch;
-          final map = {
-            'server_id': serverId,
-            'store_id': p['store_id'],
-            'name': p['name'],
-            'sku': p['sku'],
-            'price': p['price'],
-            'stock_quantity': p['stock_quantity'],
-            'is_synced': 1,
-            'last_updated': now
-          };
-          if (rows.isEmpty) {
-            await txn.insert('products', map);
-          } else {
-            await txn.update('products', map,
-                where: 'server_id = ?', whereArgs: [serverId]);
-          }
+
+      for (final p in products) {
+        final serverId = p['id'] as int?;
+        if (serverId == null) continue;
+
+        final storeId = p['store_id'] as int?;
+        if (storeId == null) {
+          debugPrint(
+              'PostgresApiService: Skipping product $serverId - no store_id');
+          continue; // Skip products without a store_id
         }
-      } else {
-        final now = DateTime.now().millisecondsSinceEpoch;
-        for (final p in products) {
-          await txn.insert('products', {
-            'server_id': p['id'],
-            'store_id': p['store_id'],
-            'name': p['name'],
-            'sku': p['sku'],
-            'price': p['price'],
-            'stock_quantity': p['stock_quantity'],
-            'is_synced': 1,
-            'last_updated': now
-          });
+
+        // Check if product exists
+        final existing = await (db.select(db.products)
+              ..where((pr) => pr.serverId.equals(serverId)))
+            .getSingleOrNull();
+
+        final companion = ProductsCompanion(
+          serverId: Value(serverId),
+          storeId: Value(storeId),
+          name: Value(p['name'] as String? ?? ''),
+          sku: Value(p['sku'] as String? ?? ''),
+          price: Value((p['price'] as num?)?.toDouble() ?? 0.0),
+          stockQuantity: Value((p['stock_quantity'] as num?)?.toInt() ?? 0),
+          syncStatus: const Value(SyncStatus.synced),
+          lastUpdatedAt: Value(DateTime.now()),
+        );
+
+        if (existing == null) {
+          await db.into(db.products).insert(companion);
+        } else {
+          await (db.update(db.products)
+                ..where((pr) => pr.serverId.equals(serverId)))
+              .write(companion);
         }
       }
     });
@@ -239,14 +240,100 @@ class PostgresApiService {
     }
     final data = jsonDecode(res.body);
     if (data is List) return data.cast<Map<String, dynamic>>();
-    if (data is Map && data['products'] is List)
+    if (data is Map && data['products'] is List) {
       return (data['products'] as List).cast<Map<String, dynamic>>();
+    }
     return [];
+  }
+
+  /// Create a store on the server and return the created object
+  Future<Map<String, dynamic>> createStore(Map<String, dynamic> payload,
+      {String? token}) async {
+    debugPrint('🏪 API: createStore called - payload: ${payload['name']}');
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final uri = Uri.parse('$baseUrl/api/stores');
+
+    final res = await _executeWithRetry(
+      () => client.post(uri, headers: headers, body: jsonEncode(payload)),
+      context: 'createStore',
+    );
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw ApiConnectionException('Failed to create store: ${res.statusCode}',
+          statusCode: res.statusCode);
+    }
+    debugPrint('✅ API: createStore completed - Status ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Update a store on the server and return the updated object
+  Future<Map<String, dynamic>> updateStore(int id, Map<String, dynamic> payload,
+      {String? token}) async {
+    debugPrint('🏪 API: updateStore called - id: $id');
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final uri = Uri.parse('$baseUrl/api/stores/$id');
+
+    final res = await _executeWithRetry(
+      () => client.put(uri, headers: headers, body: jsonEncode(payload)),
+      context: 'updateStore',
+    );
+
+    if (res.statusCode != 200) {
+      throw ApiConnectionException('Failed to update store: ${res.statusCode}',
+          statusCode: res.statusCode);
+    }
+    debugPrint('✅ API: updateStore completed - Status ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Create a user on the server and return the created object
+  Future<Map<String, dynamic>> createUser(Map<String, dynamic> payload,
+      {String? token}) async {
+    debugPrint('👤 API: createUser called - payload: ${payload['username']}');
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final uri = Uri.parse('$baseUrl/api/users');
+
+    final res = await _executeWithRetry(
+      () => client.post(uri, headers: headers, body: jsonEncode(payload)),
+      context: 'createUser',
+    );
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw ApiConnectionException('Failed to create user: ${res.statusCode}',
+          statusCode: res.statusCode);
+    }
+    debugPrint('✅ API: createUser completed - Status ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Update a user on the server and return the updated object
+  Future<Map<String, dynamic>> updateUser(int id, Map<String, dynamic> payload,
+      {String? token}) async {
+    debugPrint('👤 API: updateUser called - id: $id');
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final uri = Uri.parse('$baseUrl/api/users/$id');
+
+    final res = await _executeWithRetry(
+      () => client.put(uri, headers: headers, body: jsonEncode(payload)),
+      context: 'updateUser',
+    );
+
+    if (res.statusCode != 200) {
+      throw ApiConnectionException('Failed to update user: ${res.statusCode}',
+          statusCode: res.statusCode);
+    }
+    debugPrint('✅ API: updateUser completed - Status ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
   /// Create a product on the server and return the created object
   Future<Map<String, dynamic>> createProduct(Map<String, dynamic> payload,
       {String? token}) async {
+    debugPrint('📦 API: createProduct called - payload: ${payload['name']}');
     final headers = {'Content-Type': 'application/json'};
     if (token != null) headers['Authorization'] = 'Bearer $token';
     final uri = Uri.parse('$baseUrl/api/products');
@@ -261,6 +348,28 @@ class PostgresApiService {
           'Failed to create product: ${res.statusCode}',
           statusCode: res.statusCode);
     }
+    debugPrint('✅ API: createProduct completed - Status ${res.statusCode}');
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Create a sale on the server and return the created object
+  Future<Map<String, dynamic>> createSale(Map<String, dynamic> payload,
+      {String? token}) async {
+    debugPrint('💰 API: createSale called - total: ${payload['total_amount']}');
+    final headers = {'Content-Type': 'application/json'};
+    if (token != null) headers['Authorization'] = 'Bearer $token';
+    final uri = Uri.parse('$baseUrl/api/sales');
+
+    final res = await _executeWithRetry(
+      () => client.post(uri, headers: headers, body: jsonEncode(payload)),
+      context: 'createSale',
+    );
+
+    if (res.statusCode != 200 && res.statusCode != 201) {
+      throw ApiConnectionException('Failed to create sale: ${res.statusCode}',
+          statusCode: res.statusCode);
+    }
+    debugPrint('✅ API: createSale completed - Status ${res.statusCode}');
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
@@ -296,8 +405,11 @@ class PostgresApiService {
       context: 'deleteProduct',
     );
 
-    if (res.statusCode == 204 || res.statusCode == 200 || res.statusCode == 404)
+    if (res.statusCode == 204 ||
+        res.statusCode == 200 ||
+        res.statusCode == 404) {
       return;
+    }
     throw ApiConnectionException('Failed to delete product: ${res.statusCode}',
         statusCode: res.statusCode);
   }

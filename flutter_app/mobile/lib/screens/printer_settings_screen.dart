@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 import '../services/bluetooth_printer_service.dart';
 import 'printer_discovery_screen.dart';
 import 'print_queue_screen.dart';
@@ -196,12 +197,9 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
           width: double.infinity,
           child: ElevatedButton.icon(
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => PrinterDiscoveryScreen(
-                    printerService: widget.printerService,
-                  ),
+              context.pushSmooth(
+                PrinterDiscoveryScreen(
+                  printerService: widget.printerService,
                 ),
               );
             },
@@ -242,12 +240,9 @@ class _PrinterSettingsScreenState extends State<PrinterSettingsScreen> {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => PrintQueueScreen(
-                      printerService: widget.printerService,
-                    ),
+                context.pushSmooth(
+                  PrintQueueScreen(
+                    printerService: widget.printerService,
                   ),
                 );
               },

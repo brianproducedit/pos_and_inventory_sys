@@ -3,10 +3,12 @@ import 'package:mobile/theme/tokens.dart';
 import 'package:provider/provider.dart';
 import 'package:mobile/providers/user_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
+import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/widgets/management_list_item.dart';
 import 'package:mobile/widgets/primary_text_field.dart';
 import 'package:mobile/widgets/primary_button.dart';
 import 'package:mobile/widgets/primary_dialog.dart';
+import 'package:mobile/db/app_database.dart';
 
 class UserManagementScreen extends StatelessWidget {
   const UserManagementScreen({super.key});
@@ -134,7 +136,9 @@ class UserManagementScreen extends StatelessWidget {
                 'name': nameCtrl.text.trim(),
                 'email': emailCtrl.text.trim()
               });
+              // Trigger sync after update
               if (context.mounted) {
+                context.read<SyncProvider>().sync();
                 Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('User updated')));
@@ -161,6 +165,8 @@ class UserManagementScreen extends StatelessWidget {
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               await context.read<UserProvider>().deleteUser(user['id'] as int);
+              // Trigger sync after delete
+              context.read<SyncProvider>().sync();
               Navigator.of(context).pop();
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('User deleted')));
@@ -175,7 +181,7 @@ class UserManagementScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    if (auth.role != 'superadmin' && auth.role != 'admin') {
+    if (auth.role != UserRole.superadmin && auth.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('User Management')),
         body: const Center(child: Text('Access denied')),

@@ -161,6 +161,21 @@ def get_initial_data(db: Session = Depends(get_db), current_user = Depends(get_c
         raise HTTPException(status_code=503, detail="Sync service is temporarily disabled")
 
     with time_sync_operation('initial_sync'):
+        # Get all active users (for authentication and reference)
+        users = db.query(User).filter(User.is_active == True).all()
+        user_list = []
+        for u in users:
+            user_list.append({
+                'id': u.id,
+                'username': u.username,
+                'full_name': u.full_name,
+                'role': u.role.value if hasattr(u.role, 'value') else str(u.role),
+                'store_id': u.store_id,
+                'is_active': u.is_active,
+                'created_at': u.created_at.isoformat() if u.created_at else None,
+                'updated_at': u.updated_at.isoformat() if u.updated_at else None,
+            })
+
         # Get all active products
         products = db.query(Product).filter(Product.is_active == True).all()
         product_list = []
@@ -191,10 +206,41 @@ def get_initial_data(db: Session = Depends(get_db), current_user = Depends(get_c
                 'updated_at': s.updated_at.isoformat() if s.updated_at else None,
             })
 
+        # Get recent transactions (last 1000 for initial sync to avoid overwhelming clients)
+        transactions = db.query(Sale).order_by(Sale.created_at.desc()).limit(1000).all()
+        transaction_list = []
+        for t in transactions:
+            # Get sale items for this transaction
+            items = db.query(SaleItem).filter(SaleItem.sale_id == t.id).all()
+            item_list = []
+            for item in items:
+                item_list.append({
+                    'product_id': item.product_id,
+                    'quantity': item.quantity,
+                    'unit_price': item.unit_price,
+                    'total_price': item.total_price,
+                })
+
+            transaction_list.append({
+                'id': t.id,
+                'transaction_number': t.transaction_number,
+                'store_id': t.store_id,
+                'user_id': t.user_id,
+                'total_amount': t.total_amount,
+                'payment_method': t.payment_method,
+                'payment_reference': t.paynow_reference,
+                'status': t.status,
+                'items': item_list,
+                'created_at': t.created_at.isoformat() if t.created_at else None,
+                'updated_at': None,  # Sales don't have updated_at field
+            })
+
         record_sync_operation('initial_sync', 'success')
         return {
+            'users': user_list,
             'products': product_list,
             'stores': store_list,
+            'transactions': transaction_list,
             'server_time': datetime.utcnow().isoformat()
         }
 
@@ -205,6 +251,13 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
     # Check if sync is enabled via feature flags
     if not is_feature_enabled('SYNC_ENABLED'):
         raise HTTPException(status_code=503, detail="Sync service is temporarily disabled")
+
+    print(f"📥 SYNC PUSH: Received {len(payload.changes)} changes from client_id: {payload.client_id}")
+    user_changes = [c for c in payload.changes if c.resource_type == 'user']
+    if user_changes:
+        print(f"👥 SYNC PUSH: {len(user_changes)} user changes:")
+        for uc in user_changes:
+            print(f"   - {uc.operation} user: {uc.data.get('username') if uc.data else 'N/A'} (temp_id: {uc.temp_id})")
 
     with time_sync_operation('push'):
         applied = []
@@ -287,6 +340,8 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
 
                     data = ch.data or {}
                     for k, v in data.items():
+                        if k == 'id':  # Never update id (primary key)
+                            continue
                         if hasattr(p, k):
                             setattr(p, k, v)
                     db.commit()
@@ -363,6 +418,8 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             continue
                     data = ch.data or {}
                     for k, v in data.items():
+                        if k == 'id':  # Never update id (primary key)
+                            continue
                         if hasattr(s, k):
                             setattr(s, k, v)
                     db.commit()
@@ -408,6 +465,7 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                 if ch.operation == 'create':
                     data = ch.data or {}
                     uname = data.get('username')
+                    print(f"🔵 SYNC: Received user creation request - username: {uname}, data: {data}")
                     if not uname:
                         conflicts.append(SyncConflict(resource_type='user', id=None, message='Create missing username').dict())
                         continue
@@ -416,14 +474,17 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                         import secrets
                         pw = secrets.token_urlsafe(12)
                         must_change = True
+                        print(f"⚠️ SYNC: No password provided for {uname}, generating random password")
                     else:
                         must_change = data.get('must_change_password', True)
+                        print(f"✅ SYNC: Password provided for {uname}")
                     role_val = data.get('role', 'cashier')
                     try:
                         u = User(username=uname, password_hash=get_password_hash(pw), role=UserRole(role_val), is_active=data.get('is_active', True), store_id=data.get('store_id'), must_change_password=must_change)
                         db.add(u)
                         db.commit()
                         db.refresh(u)
+                        print(f"✅ SYNC: User {uname} created with ID {u.id}")
                         applied.append({'resource_type': 'user', 'operation': 'create', 'id': u.id})
                         # Record change
                         try:
@@ -432,8 +493,10 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             db.rollback()
                         if ch.temp_id:
                             id_map[ch.temp_id] = u.id
-                    except IntegrityError:
+                            print(f"✅ SYNC: Mapped temp_id {ch.temp_id} -> server_id {u.id}")
+                    except IntegrityError as e:
                         db.rollback()
+                        print(f"❌ SYNC: IntegrityError creating user {uname}: {e}")
                         conflicts.append(SyncConflict(resource_type='user', id=None, message='Username already exists').dict())
 
                 elif ch.operation == 'update':
@@ -462,7 +525,7 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             continue
                         u.role = UserRole(data.get('role'))
                     for k, v in data.items():
-                        if k == 'password' or k == 'role':
+                        if k in ('password', 'role', 'id'):  # Never update id (primary key)
                             continue
                         if hasattr(u, k):
                             setattr(u, k, v)
@@ -501,13 +564,17 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                         conflicts.append(SyncConflict(resource_type='transaction', id=None, message='Transaction missing store_id').dict())
                         continue
                     
+                    # Use provided transaction_number if present; we'll ensure a fallback after flush
+                    # Ensure transaction_number is not null at insert: use client-provided or a temp placeholder we can replace after flush
+                    txn_num_initial = data.get('transaction_number') or (f"temp-{ch.temp_id}" if ch.temp_id else 'temp-unknown')
                     sale = Sale(
                         user_id=user_id,
                         store_id=store_id,
+                        transaction_number=txn_num_initial,
                         total_amount=data.get('total_amount', 0.0),
                         payment_method=data.get('payment_method', 'cash'),
                         paynow_reference=data.get('paynow_reference'),
-                        status=data.get('status', 'completed')
+                        status=data.get('status', 'completed'),
                     )
                     
                     # Pre-validate all items BEFORE adding sale to database
@@ -559,7 +626,11 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                     # Now add the sale (after validation passed)
                     db.add(sale)
                     db.flush()  # Get sale.id without committing
-                    
+
+                    # Ensure transaction_number exists: if client provided a temp placeholder, replace with stable fallback using real id
+                    if getattr(sale, 'transaction_number', '').startswith('temp-'):
+                        sale.transaction_number = f"sales#{sale.id}"
+
                     # Add all sale items
                     for item_data in sale_items_to_add:
                         si = SaleItem(
@@ -570,12 +641,18 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             total_price=item_data['total_price']
                         )
                         db.add(si)
-                    
+
                     # Commit everything atomically
                     db.commit()
                     db.refresh(sale)
-                    
-                    applied.append({'resource_type': 'transaction', 'operation': 'create', 'id': sale.id})
+
+                    applied.append({'resource_type': 'transaction', 'operation': 'create', 'id': sale.id, 'data': {
+                        'transaction_number': sale.transaction_number,
+                        'store_id': sale.store_id,
+                        'user_id': sale.user_id,
+                        'total_amount': sale.total_amount,
+                        'payment_method': sale.payment_method
+                    }})
                     if ch.temp_id:
                         id_map[ch.temp_id] = sale.id
                         
@@ -589,11 +666,22 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                         continue
                     data = ch.data or {}
                     for k, v in data.items():
-                        if k != 'items' and hasattr(sale, k):
+                        if k in ('id', 'items'):  # Never update id (primary key)
+                            continue
+                        if k == 'transaction_number' and v is None:
+                            # Ignore explicit nulls for transaction_number
+                            continue
+                        if hasattr(sale, k):
                             setattr(sale, k, v)
                     db.commit()
                     db.refresh(sale)
-                    applied.append({'resource_type': 'transaction', 'operation': 'update', 'id': sale.id})
+                    applied.append({'resource_type': 'transaction', 'operation': 'update', 'id': sale.id, 'data': {
+                        'transaction_number': sale.transaction_number,
+                        'store_id': sale.store_id,
+                        'user_id': sale.user_id,
+                        'total_amount': sale.total_amount,
+                        'payment_method': sale.payment_method
+                    }})
                     
                 else:
                     conflicts.append(SyncConflict(resource_type='transaction', id=ch.id, message='Operation not supported for transaction').dict())
@@ -639,7 +727,9 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             db.add(us)
                         # Update fields from data
                         for k, v in data.items():
-                            if k not in ['setting_type', 'user_id', 'key', 'value'] and hasattr(us, k):
+                            if k in ('id', 'setting_type', 'user_id', 'key', 'value'):
+                                continue
+                            if hasattr(us, k):
                                 setattr(us, k, v)
                         # Handle key-value style updates
                         key = data.get('key')
@@ -662,7 +752,9 @@ def push_changes(payload: SyncPushRequest, db: Session = Depends(get_db), curren
                             ss = StoreSettings(store_id=store_id)
                             db.add(ss)
                         for k, v in data.items():
-                            if k not in ['setting_type', 'store_id', 'key', 'value'] and hasattr(ss, k):
+                            if k in ('id', 'setting_type', 'store_id', 'key', 'value'):
+                                continue
+                            if hasattr(ss, k):
                                 setattr(ss, k, v)
                         key = data.get('key')
                         value = data.get('value')

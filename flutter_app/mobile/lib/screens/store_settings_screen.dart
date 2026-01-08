@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/sync_provider.dart';
 import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/db/app_database.dart';
 
 class StoreSettingsScreen extends StatefulWidget {
   const StoreSettingsScreen({super.key});
@@ -29,7 +31,7 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
         Provider.of<SettingsProvider>(context, listen: false);
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    _isSuperadmin = (authProvider.role == 'superadmin');
+    _isSuperadmin = (authProvider.role == UserRole.superadmin);
 
     _businessNameController = TextEditingController(
         text: settingsProvider.storeSettings?.businessName ?? '');
@@ -286,6 +288,8 @@ class _StoreSettingsScreenState extends State<StoreSettingsScreen> {
 
     final success = await settingsProvider.updateStoreSettings(newSettings);
     if (success && mounted) {
+      // Trigger sync after store settings update
+      context.read<SyncProvider>().sync();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Store settings saved successfully')),
       );

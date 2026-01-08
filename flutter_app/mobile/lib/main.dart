@@ -1,19 +1,22 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:drift/drift.dart';
 import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/providers/user_management_provider.dart';
+import 'package:mobile/providers/data_protection_provider.dart';
 import 'package:mobile/screens/audit_logs_screen.dart';
 import 'package:mobile/services/time_service.dart';
+import 'package:mobile/services/data_protection_service.dart';
+import 'package:mobile/services/app_lifecycle_observer.dart';
+import 'package:mobile/utils/smooth_page_route.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' as fr;
 import 'package:mobile/services/auth_service.dart';
-import 'package:mobile/services/database_service.dart';
 import 'package:mobile/providers/auth_provider.dart';
-import 'package:mobile/providers/inventory_provider.dart';
 import 'package:mobile/providers/inventory_provider_v2.dart';
-import 'package:mobile/providers/pos_provider.dart';
 import 'package:mobile/providers/pos_provider_v2.dart';
 import 'package:mobile/providers/analytics_provider.dart';
+import 'package:mobile/providers/receipts_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/settings_provider.dart';
 import 'package:mobile/providers/user_profile_provider.dart';
@@ -36,12 +39,11 @@ import 'package:mobile/screens/store_settings_screen.dart';
 import 'package:mobile/screens/user_settings_screen.dart';
 import 'package:mobile/screens/system_settings_screen.dart';
 import 'package:mobile/screens/user_profile_screen.dart';
+import 'package:mobile/screens/data_protection_screen.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'db/app_database.dart';
-import 'data/local/database_helper.dart';
 import 'data/remote/postgres_api_service.dart';
-import 'data/repositories/product_repository.dart' as v1;
-import 'data/repositories/transaction_repository.dart';
+import 'data/remote/api_client.dart';
 // V2 Offline-First Repositories
 import 'data/repositories/product_repository_v2.dart' as v2;
 import 'data/repositories/store_repository_v2.dart' as v2;
@@ -49,6 +51,7 @@ import 'data/repositories/user_repository_v2.dart' as v2;
 import 'data/repositories/sale_repository_v2.dart' as v2;
 import 'data/repositories/inventory_repository_v2.dart' as v2;
 import 'data/repositories/settings_repository_v2.dart' as v2;
+import 'data/repositories/analytics_repository_v2.dart' as v2;
 import 'ui/sync_demo.dart';
 import 'ui/admin/sync_errors_screen.dart';
 import 'dart:async';
@@ -69,6 +72,18 @@ void main() {
   runZonedGuarded(() async {
     // Ensure Flutter bindings are initialized in the same zone as runApp
     WidgetsFlutterBinding.ensureInitialized();
+
+    // Configure Drift runtime options
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+
+    // Initialize data protection service FIRST (before any database operations)
+    final dataProtectionService = DataProtectionService();
+    try {
+      await dataProtectionService.initialize();
+      debugPrint('🛡️ DataProtectionService initialized');
+    } catch (e) {
+      debugPrint('⚠️ DataProtectionService initialization failed: $e');
+    }
 
     // Ensure timezone database is initialized with Zimbabwe default
     try {
@@ -91,7 +106,7 @@ void main() {
       debugPrint('WorkManager initialization failed: $e');
     }
 
-    runApp(const MyApp());
+    runApp(MyApp(dataProtectionService: dataProtectionService));
   }, (error, stack) {
     debugPrint('Uncaught error: $error');
     debugPrint(stack.toString());
@@ -99,30 +114,46 @@ void main() {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final DataProtectionService dataProtectionService;
+
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
+  const MyApp({super.key, required this.dataProtectionService});
 
   @override
   Widget build(BuildContext context) {
     return fr.ProviderScope(
       child: MultiProvider(
         providers: [
-          ChangeNotifierProvider(create: (_) => AuthProvider()),
+          // Data Protection Service (passed from main)
+          Provider<DataProtectionService>.value(value: dataProtectionService),
+
+          // Data Protection Provider for UI state management
+          ChangeNotifierProvider(
+            create: (context) => DataProtectionProvider(
+              dataProtectionService: context.read<DataProtectionService>(),
+            ),
+          ),
 
           // Core services & repositories (must be created before providers that depend on them)
           Provider(create: (_) => AuthService()),
-          Provider(create: (_) => DatabaseService()),
-          Provider(create: (_) => AppDatabase()),
-          // Offline-first local DB helper and repositories
-          Provider(create: (_) => DatabaseHelper()),
+          Provider<AppDatabase>(
+            create: (_) {
+              // PRAGMA configuration (WAL mode, busy timeout) happens automatically during DB opening
+              return AppDatabase();
+            },
+          ),
+          // API services
           Provider(create: (_) => PostgresApiService()),
-          Provider(
-              create: (context) => v1.ProductRepository(
-                  db: context.read<DatabaseHelper>(),
-                  api: context.read<PostgresApiService>())),
-          Provider<TransactionRepository>(
-              create: (context) => TransactionRepositoryImpl(
-                  db: context.read<DatabaseHelper>(),
-                  api: context.read<PostgresApiService>())),
+          Provider(create: (_) => ApiClient()),
+
+          // AuthProvider with required dependencies
+          ChangeNotifierProvider(
+              create: (context) => AuthProvider(
+                    db: context.read<AppDatabase>(),
+                    apiClient: context.read<ApiClient>(),
+                  )),
 
           // V2 Offline-First Repositories (use Drift database)
           Provider<v2.ProductRepository>(
@@ -143,22 +174,15 @@ class MyApp extends StatelessWidget {
           Provider<v2.SettingsRepository>(
               create: (context) =>
                   v2.SettingsRepository(db: context.read<AppDatabase>())),
+          Provider<v2.AnalyticsRepository>(
+              create: (context) =>
+                  v2.AnalyticsRepository(context.read<AppDatabase>())),
 
           // SyncProvider must be created before providers that depend on it
-          ChangeNotifierProvider(create: (_) => SyncProvider()),
-
-          // V1 UI-level providers (legacy - being phased out)
-          ChangeNotifierProxyProvider<SyncProvider, InventoryProvider>(
-            create: (context) => InventoryProvider(
-                productRepository: context.read<v1.ProductRepository>(),
-                dbHelper: context.read<DatabaseHelper>(),
-                syncProvider: context.read<SyncProvider>()),
-            update: (context, syncProvider, previous) =>
-                previous ??
-                InventoryProvider(
-                    productRepository: context.read<v1.ProductRepository>(),
-                    dbHelper: context.read<DatabaseHelper>(),
-                    syncProvider: syncProvider),
+          // lazy: false ensures it initializes immediately on app start
+          ChangeNotifierProvider(
+            create: (_) => SyncProvider(),
+            lazy: false,
           ),
 
           // V2 UI-level providers (offline-first with Drift)
@@ -173,29 +197,32 @@ class MyApp extends StatelessWidget {
               context.read<v2.SaleRepository>(),
             ),
           ),
-          ChangeNotifierProxyProvider<SyncProvider, PosProvider>(
-            create: (context) => PosProvider(
-                productRepository: context.read<v1.ProductRepository>(),
-                transactionRepository: context.read<TransactionRepository>(),
-                syncProvider: context.read<SyncProvider>()),
-            update: (context, syncProvider, previous) =>
-                previous ??
-                PosProvider(
-                    productRepository: context.read<v1.ProductRepository>(),
-                    transactionRepository:
-                        context.read<TransactionRepository>(),
-                    syncProvider: syncProvider),
-          ),
 
-          ChangeNotifierProvider(create: (_) => AnalyticsProvider()),
-          ChangeNotifierProvider(create: (_) => StoreProvider()),
-          ChangeNotifierProvider(create: (_) => UserManagementProvider()),
+          ChangeNotifierProvider(
+            create: (context) => AnalyticsProvider(
+              analyticsRepository: context.read<v2.AnalyticsRepository>(),
+            ),
+          ),
+          ChangeNotifierProvider(
+            create: (context) => ReceiptsProvider(
+              saleRepository: context.read<v2.SaleRepository>(),
+            ),
+          ),
+          ChangeNotifierProvider(
+            create: (context) => StoreProvider(
+              storeRepository: context.read<v2.StoreRepository>(),
+            ),
+          ),
+          ChangeNotifierProvider(
+            create: (context) => UserManagementProvider(
+              userRepository: context.read<v2.UserRepository>(),
+            ),
+          ),
           ChangeNotifierProvider(create: (_) => AuditProvider()),
-          ChangeNotifierProxyProvider<AuthProvider, SettingsProvider>(
-            create: (context) =>
-                SettingsProvider(authProvider: context.read<AuthProvider>()),
-            update: (context, authProvider, previous) =>
-                SettingsProvider(authProvider: authProvider),
+          ChangeNotifierProvider(
+            create: (context) => SettingsProvider(
+              settingsRepository: context.read<v2.SettingsRepository>(),
+            ),
           ),
           ChangeNotifierProxyProvider<AuthProvider, UserProfileProvider>(
             create: (context) =>
@@ -205,6 +232,7 @@ class MyApp extends StatelessWidget {
           ),
         ],
         child: MaterialApp(
+          navigatorKey: navigatorKey,
           title: 'POS & Inventory',
           theme: buildLightTheme(),
           debugShowCheckedModeBanner: false,
@@ -220,7 +248,7 @@ class MyApp extends StatelessWidget {
                 const AnalyticsEventsDashboardScreen(),
             '/add_product': (context) => const AddProductScreen(),
             '/sales_history': (context) => SalesHistoryScreen(
-                  transactionRepository: context.read<TransactionRepository>(),
+                  saleRepository: context.read<v2.SaleRepository>(),
                 ),
             '/store_management': (context) => const StoreManagementScreen(),
             '/admin_management': (context) => const AdminManagementScreen(),
@@ -231,24 +259,28 @@ class MyApp extends StatelessWidget {
             '/system_settings': (context) => const SystemSettingsScreen(),
             '/user_profile': (context) => const UserProfileScreen(),
             '/audit_logs': (context) => const AuditLogsScreen(),
+            '/data_protection': (context) => const DataProtectionScreen(),
             '/sync_demo': (context) => const SyncDemoScreen(),
             '/admin/sync-errors': (context) => const SyncErrorsScreen(),
             // Dev preview routes
             // '/components_demo': (context) => const ComponentsDemoScreen(),
           },
           onGenerateRoute: (settings) {
+            final context = navigatorKey.currentContext;
+            if (context == null) return null;
+
             if (settings.name == '/edit_product') {
               final product = settings.arguments as Map<String, dynamic>;
-              return MaterialPageRoute(
-                builder: (context) => EditProductScreen(product: product),
+              return SmoothPageRoute(
+                page: EditProductScreen(product: product),
               );
             }
             if (settings.name == '/receipt') {
               final saleId = settings.arguments as int;
-              return MaterialPageRoute(
-                builder: (context) => ReceiptScreen(
+              return SmoothPageRoute(
+                page: ReceiptScreen(
                   saleId: saleId,
-                  transactionRepository: context.read<TransactionRepository>(),
+                  saleRepository: context.read<v2.SaleRepository>(),
                 ),
               );
             }
@@ -268,18 +300,43 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  late AppLifecycleObserver _lifecycleObserver;
+
   @override
   void initState() {
     super.initState();
     // Initialize store provider when user is authenticated
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final storeProvider = Provider.of<StoreProvider>(context, listen: false);
+      final userManagementProvider =
+          Provider.of<UserManagementProvider>(context, listen: false);
+
+      // Set auth provider in dependent providers for proper filtering
+      storeProvider.setAuthProvider(authProvider);
+      userManagementProvider.setAuthProvider(authProvider);
+
       if (authProvider.isAuthenticated) {
-        final storeProvider =
-            Provider.of<StoreProvider>(context, listen: false);
         storeProvider.initialize();
       }
+
+      // Initialize data protection provider
+      final dataProtectionProvider =
+          Provider.of<DataProtectionProvider>(context, listen: false);
+      dataProtectionProvider.initialize();
+
+      // Start app lifecycle observer for data protection
+      final dataProtectionService =
+          Provider.of<DataProtectionService>(context, listen: false);
+      _lifecycleObserver = AppLifecycleObserver(dataProtectionService);
+      _lifecycleObserver.startObserving();
     });
+  }
+
+  @override
+  void dispose() {
+    _lifecycleObserver.stopObserving();
+    super.dispose();
   }
 
   @override

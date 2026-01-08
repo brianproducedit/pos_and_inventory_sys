@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (API 31+) Backup Rules for POS and Inventory App
+    
+    This file uses the new data extraction rules format introduced in Android 12.
+    It provides granular control over cloud backup and device-to-device transfer.
+    
+    Key differences from backup_rules.xml:
+    - Separate rules for cloud backup vs device transfer
+    - More explicit control over backup behavior
+    - Required for targeting Android 12+ (API 31+)
+-->
+<data-extraction-rules>
+    <!--
+        Cloud backup rules (Google Drive backup)
+        These apply when the device backs up to Google's servers
+    -->
+    <cloud-backup>
+        <!-- Include critical database files -->
+        <include domain="database" path="." />
+        
+        <!-- Include shared preferences (sync state, settings) -->
+        <include domain="sharedpref" path="." />
+        
+        <!-- Include our manual backup files on external storage -->
+        <include domain="external" path="POS_Backups" />
+        
+        <!-- Include secure storage for credentials -->
+        <include domain="file" path="flutter_secure_storage" />
+        
+        <!-- Exclude cache -->
+        <exclude domain="cache" path="." />
+        
+        <!-- Exclude temporary files -->
+        <exclude domain="file" path="sync_temp" />
+        <exclude domain="file" path="logs" />
+        <exclude domain="file" path="image_cache" />
+    </cloud-backup>
+    
+    <!--
+        Device-to-device transfer rules
+        These apply during device migration (e.g., new phone setup)
+        Generally more permissive since data doesn't leave user's devices
+    -->
+    <device-transfer>
+        <!-- Include all database files -->
+        <include domain="database" path="." />
+        
+        <!-- Include all shared preferences -->
+        <include domain="sharedpref" path="." />
+        
+        <!-- Include external storage backups -->
+        <include domain="external" path="POS_Backups" />
+        
+        <!-- Include secure storage -->
+        <include domain="file" path="flutter_secure_storage" />
+        
+        <!-- Include app files (may contain important local data) -->
+        <include domain="file" path="." />
+        
+        <!-- Still exclude cache and temp files -->
+        <exclude domain="cache" path="." />
+        <exclude domain="file" path="sync_temp" />
+        <exclude domain="file" path="logs" />
+    </device-transfer>
+</data-extraction-rules>

@@ -8,25 +8,26 @@ import '../db/app_database.dart';
 // Default server base: prefer configured environment constant (suitable for physical devices)
 import '../config/env.dart';
 
-final String defaultServerBase = Env.baseUrl;
+const String defaultServerBase = Env.baseUrl;
 
 class SyncService {
   final dynamic db;
   final http.Client httpClient;
   final String
-      serverBase; // instance-level server base so tests can override it
+  serverBase; // instance-level server base so tests can override it
   static const Uuid _uuid = Uuid();
 
   SyncService(this.db, {http.Client? httpClient, String? serverBase})
-      : httpClient = httpClient ?? http.Client(),
-        serverBase = serverBase ?? defaultServerBase;
+    : httpClient = httpClient ?? http.Client(),
+      serverBase = serverBase ?? defaultServerBase;
 
-  Future<String> enqueueCreateProduct(
-      {required String name,
-      String? description,
-      double price = 0.0,
-      int stock = 0,
-      int? storeId}) async {
+  Future<String> enqueueCreateProduct({
+    required String name,
+    String? description,
+    double price = 0.0,
+    int stock = 0,
+    int? storeId,
+  }) async {
     // If caller didn't provide a storeId, try to read user's current store from prefs
     if (storeId == null) {
       try {
@@ -40,7 +41,8 @@ class SyncService {
     // If still null, creating a product without a store is invalid in the server schema.
     if (storeId == null) {
       throw Exception(
-          'No active store selected. Please select a store before creating products.');
+        'No active store selected. Please select a store before creating products.',
+      );
     }
 
     final clientId = _uuid.v4();
@@ -50,7 +52,7 @@ class SyncService {
       description: Value(description),
       price: Value(price),
       stockQuantity: Value(stock),
-      storeId: Value(storeId),
+      storeId: storeId,
     );
     await db.insertProduct(entry);
 
@@ -63,15 +65,16 @@ class SyncService {
         'description': description,
         'price': price,
         'stock_quantity': stock,
-        'store_id': storeId
-      }
+        'store_id': storeId,
+      },
     };
 
     await db.enqueueChange(
-        clientTempId: clientId,
-        resourceType: 'product',
-        operation: 'create',
-        payloadJson: jsonEncode(payload));
+      clientTempId: clientId,
+      resourceType: 'product',
+      operation: 'create',
+      payloadJson: jsonEncode(payload),
+    );
     return clientId;
   }
 
@@ -100,11 +103,14 @@ class SyncService {
     }
     if (invalidTempIds.isNotEmpty) {
       throw Exception(
-          'Pending product create(s) missing store_id (temp_ids: ${invalidTempIds.join(', ')}). Select a store or remove the pending changes before syncing.');
+        'Pending product create(s) missing store_id (temp_ids: ${invalidTempIds.join(', ')}). Select a store or remove the pending changes before syncing.',
+      );
     }
 
-    final body =
-        jsonEncode({'client_id': 'flutter-device', 'changes': changes});
+    final body = jsonEncode({
+      'client_id': 'flutter-device',
+      'changes': changes,
+    });
 
     final headers = {'Content-Type': 'application/json'};
     // If caller didn't provide a token, try to fetch the stored access_token
@@ -118,8 +124,11 @@ class SyncService {
     }
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
 
-    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'),
-        headers: headers, body: body);
+    final res = await httpClient.post(
+      Uri.parse('$serverBase/api/sync/push'),
+      headers: headers,
+      body: body,
+    );
     if (res.statusCode != 200) {
       throw Exception('Sync push failed: ${res.statusCode} ${res.body}');
     }
@@ -131,7 +140,6 @@ class SyncService {
     for (final entry in idMap.entries) {
       final tempId = entry.key;
       final serverId = entry.value as int;
-      // TODO: update local product to reflect server id if needed. For now, clear clientId
       await db.updateProductServerId(tempId, serverId);
     }
 
@@ -142,8 +150,10 @@ class SyncService {
       if (a['operation'] == 'create' && a.containsKey('id')) {
         final serverId = a['id'];
         final tempId = idMap.entries
-            .firstWhere((e) => e.value == serverId,
-                orElse: () => MapEntry('', null))
+            .firstWhere(
+              (e) => e.value == serverId,
+              orElse: () => const MapEntry('', null),
+            )
             .key;
         if (tempId != '') {
           // Snapshot pending changes to avoid concurrent modification during deletions
@@ -172,7 +182,7 @@ class SyncService {
     return {
       'applied': data['applied'] ?? [],
       'conflicts': conflicts,
-      'id_map': idMap
+      'id_map': idMap,
     };
   }
 
@@ -219,17 +229,21 @@ class SyncService {
 
     final body = jsonEncode({
       'client_id': 'flutter-device',
-      'changes': [change]
+      'changes': [change],
     });
     final headers = {'Content-Type': 'application/json'};
     if (jwtToken != null) headers['Authorization'] = 'Bearer $jwtToken';
 
-    final res = await httpClient.post(Uri.parse('$serverBase/api/sync/push'),
-        headers: headers, body: body);
+    final res = await httpClient.post(
+      Uri.parse('$serverBase/api/sync/push'),
+      headers: headers,
+      body: body,
+    );
 
     if (res.statusCode != 200) {
       throw Exception(
-          'Sync force update failed: ${res.statusCode} ${res.body}');
+        'Sync force update failed: ${res.statusCode} ${res.body}',
+      );
     }
 
     final dataResp = jsonDecode(res.body);
@@ -240,13 +254,15 @@ class SyncService {
     };
   }
 
-  Future<List<Map<String, dynamic>>> pullChanges(
-      {required DateTime since,
-      String types = 'products',
-      String? jwtToken}) async {
+  Future<List<Map<String, dynamic>>> pullChanges({
+    required DateTime since,
+    String types = 'products',
+    String? jwtToken,
+  }) async {
     final sinceIso = since.toIso8601String();
-    final uri =
-        Uri.parse('$serverBase/api/sync/changes?since=$sinceIso&types=$types');
+    final uri = Uri.parse(
+      '$serverBase/api/sync/changes?since=$sinceIso&types=$types',
+    );
     final headers = <String, String>{};
     if (jwtToken == null) {
       try {
@@ -268,16 +284,21 @@ class SyncService {
         .cast<Map<String, dynamic>>();
     for (final p in prods) {
       final d = p['data'] as Map<String, dynamic>;
+      final storeId = d['store_id'] as int?;
+
+      // Skip products without a store_id (invalid data from server)
+      if (storeId == null) continue;
+
       // Simplified upsert: insert server-authoritative product into local DB.
       // NOTE: For production, add a dedicated server_id column and proper conflict
       // resolution / deduplication instead of blind inserts.
       final entry = ProductsCompanion.insert(
-        clientId: Value(null),
+        clientId: const Value.absent(),
         name: d['name'] as String? ?? '',
         description: Value(d['description'] as String?),
         price: Value((d['price'] as num?)?.toDouble() ?? 0.0),
         stockQuantity: Value(d['stock_quantity'] as int? ?? 0),
-        storeId: Value(d['store_id'] as int?),
+        storeId: storeId,
       );
 
       try {

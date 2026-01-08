@@ -1,27 +1,28 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'lib/config/env.dart';
 
 void main() async {
-  print('Testing connection to Railway backend...');
-  print('API URL: ${Env.baseUrl}');
+  debugPrint('Testing connection to Railway backend...');
+  debugPrint('API URL: ${Env.baseUrl}');
 
   // Test 1: Check /docs endpoint
-  print('\n1. Testing /docs endpoint...');
+  debugPrint('\n1. Testing /docs endpoint...');
   try {
     final docsResponse = await http
         .get(
           Uri.parse('${Env.baseUrl}/docs'),
         )
-        .timeout(Duration(seconds: 10));
-    print('   Status: ${docsResponse.statusCode}');
-    print('   ✅ API docs accessible');
+        .timeout(const Duration(seconds: 10));
+    debugPrint('   Status: ${docsResponse.statusCode}');
+    debugPrint('   ✅ API docs accessible');
   } catch (e) {
-    print('   ❌ Failed: $e');
+    debugPrint('   ❌ Failed: $e');
   }
 
   // Test 2: Test login endpoint
-  print('\n2. Testing login endpoint...');
+  debugPrint('\n2. Testing login endpoint...');
   try {
     final loginResponse = await http
         .post(
@@ -29,41 +30,41 @@ void main() async {
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
           body: 'username=superadmin&password=bk007bang',
         )
-        .timeout(Duration(seconds: 10));
+        .timeout(const Duration(seconds: 10));
 
-    print('   Status: ${loginResponse.statusCode}');
+    debugPrint('   Status: ${loginResponse.statusCode}');
     if (loginResponse.statusCode == 200) {
       final data = json.decode(loginResponse.body);
       final token = data['access_token'];
-      print('   ✅ Login successful');
-      print('   Token: ${token.substring(0, 50)}...');
+      debugPrint('   ✅ Login successful');
+      debugPrint('   Token: ${token.substring(0, 50)}...');
 
       // Test 3: Get user info with token
-      print('\n3. Testing authenticated endpoint (/api/users/me)...');
+      debugPrint('\n3. Testing authenticated endpoint (/api/users/me)...');
       try {
         final meResponse = await http.get(
           Uri.parse('${Env.baseUrl}/api/users/me'),
           headers: {'Authorization': 'Bearer $token'},
-        ).timeout(Duration(seconds: 10));
+        ).timeout(const Duration(seconds: 10));
 
-        print('   Status: ${meResponse.statusCode}');
+        debugPrint('   Status: ${meResponse.statusCode}');
         if (meResponse.statusCode == 200) {
           final userData = json.decode(meResponse.body);
-          print('   ✅ User data retrieved');
-          print('   Username: ${userData['username']}');
-          print('   Role: ${userData['role']}');
+          debugPrint('   ✅ User data retrieved');
+          debugPrint('   Username: ${userData['username']}');
+          debugPrint('   Role: ${userData['role']}');
         } else {
-          print('   ❌ Failed: ${meResponse.body}');
+          debugPrint('   ❌ Failed: ${meResponse.body}');
         }
       } catch (e) {
-        print('   ❌ Failed: $e');
+        debugPrint('   ❌ Failed: $e');
       }
     } else {
-      print('   ❌ Login failed: ${loginResponse.body}');
+      debugPrint('   ❌ Login failed: ${loginResponse.body}');
     }
   } catch (e) {
-    print('   ❌ Failed: $e');
+    debugPrint('   ❌ Failed: $e');
   }
 
-  print('\n✅ API connection tests complete!');
+  debugPrint('\n✅ API connection tests complete!');
 }

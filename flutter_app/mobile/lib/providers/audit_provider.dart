@@ -71,32 +71,18 @@ class AuditProvider with ChangeNotifier {
   int _currentPage = 0;
   final int _pageSize = 50;
 
-  // Store awareness
+  // Store awareness - audit logs are system-wide, but we keep store provider for context
   StoreProvider? _storeProvider;
-  int? _lastStoreId;
+
+  void setStoreProvider(StoreProvider storeProvider) {
+    _storeProvider = storeProvider;
+    // Audit logs are system-wide, no need to listen for store changes
+  }
 
   int? _parseStoreId(dynamic id) {
     if (id == null) return null;
     if (id is int) return id;
     return int.tryParse(id.toString());
-  }
-
-  void _onStoreChanged() {
-    final newId = _parseStoreId(_storeProvider?.currentStore?['id']);
-    if (newId != _lastStoreId) {
-      _lastStoreId = newId;
-      // Refresh audit logs when store context changes
-      loadAuditLogs(refresh: true);
-    }
-  }
-
-  void setStoreProvider(StoreProvider storeProvider) {
-    if (_storeProvider != null) {
-      _storeProvider!.removeListener(_onStoreChanged);
-    }
-    _storeProvider = storeProvider;
-    _lastStoreId = _parseStoreId(_storeProvider?.currentStore?['id']);
-    _storeProvider!.addListener(_onStoreChanged);
   }
 
   // Filters

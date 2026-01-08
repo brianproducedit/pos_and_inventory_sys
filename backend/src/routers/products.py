@@ -71,6 +71,17 @@ async def create_product(
     if 'is_active' not in pdata:
         pdata['is_active'] = True
 
+    # Check for existing product to prevent duplicates
+    existing_query = db.query(Product).filter(Product.store_id == store_context.store_id)
+    if pdata.get('sku'):
+        existing = existing_query.filter(Product.sku == pdata['sku']).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Product with SKU '{pdata['sku']}' already exists in this store")
+    else:
+        existing = existing_query.filter(Product.name == pdata['name']).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Product with name '{pdata['name']}' already exists in this store")
+
     try:
         product = Product(**pdata)
         db.add(product)

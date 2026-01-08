@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -11,6 +10,7 @@ import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
+import 'package:mobile/db/app_database.dart';
 
 class AuditLogsScreen extends StatefulWidget {
   const AuditLogsScreen({super.key});
@@ -139,7 +139,8 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
     final auditProvider = context.watch<AuditProvider>();
 
     // Only superadmin and admin can access this screen
-    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+    if (authProvider.role != UserRole.superadmin &&
+        authProvider.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -162,8 +163,9 @@ class _AuditLogsScreenState extends State<AuditLogsScreen> {
                     store: context.watch<StoreProvider>().currentStore),
                 Row(
                   children: [
-                    if (context.watch<AuthProvider>().role == 'superadmin' ||
-                        context.watch<AuthProvider>().role == 'admin')
+                    if (context.watch<AuthProvider>().role ==
+                            UserRole.superadmin ||
+                        context.watch<AuthProvider>().role == UserRole.admin)
                       const StoreQuickAction(),
                     IconButton(
                       icon: Icon(

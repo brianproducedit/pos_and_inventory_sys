@@ -1,18 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:mobile/widgets/metric_card.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:mobile/providers/analytics_provider.dart';
 import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
-import 'package:mobile/providers/inventory_provider.dart';
+import 'package:mobile/providers/inventory_provider_v2.dart';
 import 'package:mobile/theme/tokens.dart';
 import 'package:mobile/widgets/app_bottom_nav.dart';
 import 'package:mobile/widgets/store_quick_action.dart';
 import 'package:mobile/widgets/store_badge.dart';
+import 'package:mobile/db/app_database.dart';
 
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
@@ -63,20 +63,18 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
       analyticsProvider.setAuthProvider(authProvider);
       analyticsProvider.setStoreProvider(storeProvider);
 
-      // Try to initialize inventory provider if it's available (some tests don't
-      // include InventoryProvider in the widget tree; don't crash in that case)
+      // Initialize inventory provider if available (some tests don't include it)
       try {
-        final inventoryProvider = context.read<InventoryProvider>();
+        final inventoryProvider = context.read<InventoryProviderV2>();
         inventoryProvider.setAuthProvider(authProvider);
         inventoryProvider.setStoreProvider(storeProvider);
-        // Trigger a load to make sure UI has fresh alert counts
-        unawaited(inventoryProvider.loadLowStockAlerts());
+        // V2 uses streams - no manual load needed
       } catch (e) {
         debugPrint('InventoryProvider not present: $e');
       }
 
       // Determine user role for dynamic UI
-      _isSuperAdmin = authProvider.role == 'superadmin';
+      _isSuperAdmin = authProvider.role == UserRole.superadmin;
 
       // Update tab controller with correct length if needed
       final targetLength = _isSuperAdmin ? 4 : 3;
@@ -114,7 +112,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             content: Text('Failed to initialize analytics: ${e.toString()}')));
       }
       try {
-        _isSuperAdmin = authProvider.role == 'superadmin';
+        _isSuperAdmin = authProvider.role == UserRole.superadmin;
       } catch (_) {
         _isSuperAdmin = false;
       }
@@ -140,7 +138,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
 
-    if (authProvider.role != 'superadmin' && authProvider.role != 'admin') {
+    if (authProvider.role != UserRole.superadmin &&
+        authProvider.role != UserRole.admin) {
       return Scaffold(
         appBar: AppBar(title: const Text('Access Denied')),
         body: const Center(
@@ -187,8 +186,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                         child: StoreIndicator(
                             store:
                                 context.watch<StoreProvider>().currentStore)),
-                    if (context.watch<AuthProvider>().role == 'superadmin' ||
-                        context.watch<AuthProvider>().role == 'admin')
+                    if (context.watch<AuthProvider>().role ==
+                            UserRole.superadmin ||
+                        context.watch<AuthProvider>().role == UserRole.admin)
                       const StoreQuickAction(),
                   ],
                 ),
@@ -215,17 +215,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             )
           : const Center(child: CircularProgressIndicator()),
       bottomNavigationBar: const AppBottomNav(currentRoute: '/analytics'),
-      floatingActionButton:
-          authProvider.role == 'superadmin' || authProvider.role == 'admin'
-              ? FloatingActionButton.extended(
-                  onPressed: () =>
-                      Navigator.of(context).pushNamed('/analytics/events'),
-                  label: const Text('Events Dashboard'),
-                  icon: const Icon(Icons.bar_chart),
-                  backgroundColor: AppColors.primaryBrand,
-                  foregroundColor: Colors.white,
-                )
-              : null,
+      floatingActionButton: authProvider.role == UserRole.superadmin ||
+              authProvider.role == UserRole.admin
+          ? FloatingActionButton.extended(
+              onPressed: () =>
+                  Navigator.of(context).pushNamed('/analytics/events'),
+              label: const Text('Events Dashboard'),
+              icon: const Icon(Icons.bar_chart),
+              backgroundColor: AppColors.primaryBrand,
+              foregroundColor: Colors.white,
+            )
+          : null,
     );
   }
 
@@ -289,7 +289,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                       () {
                         try {
                           final inventoryProvider =
-                              Provider.of<InventoryProvider>(context,
+                              Provider.of<InventoryProviderV2>(context,
                                   listen: false);
                           return inventoryProvider.lowStockCount.toString();
                         } catch (e) {
@@ -390,8 +390,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
         final inventoryAlerts = <Map<String, dynamic>>[];
         try {
           final inventoryProvider =
-              Provider.of<InventoryProvider>(context, listen: false);
-          inventoryAlerts.addAll(inventoryProvider.lowStockAlerts);
+              Provider.of<InventoryProviderV2>(context, listen: false);
+          // Use the new getter that provides products as maps
+          inventoryAlerts
+              .addAll(inventoryProvider.lowStockAlertsAsMaps.map((product) {
+            return {
+              ...product,
+              'alert_level':
+                  (product['stock_quantity'] as int) < 3 ? 'Critical' : 'Low',
+            };
+          }));
         } catch (e) {
           // InventoryProvider not available, use empty list
         }
@@ -424,8 +432,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
                     final alert = inventoryAlerts[index];
                     return Card(
                       color: alert['alert_level'] == 'Low'
-                          ? AppColors.warning.withOpacity(0.08)
-                          : AppColors.secondaryAccent.withOpacity(0.08),
+                          ? AppColors.warning.withValues(alpha: 0.08 * 255)
+                          : AppColors.secondaryAccent
+                              .withValues(alpha: 0.08 * 255),
                       child: ListTile(
                         leading: Icon(
                           Icons.warning,
@@ -512,7 +521,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
             color: AppColors.primaryBrand,
             barWidth: 4,
             belowBarData: BarAreaData(
-                show: true, color: AppColors.primaryBrand.withOpacity(0.1)),
+                show: true,
+                color: AppColors.primaryBrand.withValues(alpha: 0.1 * 255)),
             dotData: const FlDotData(show: true),
           ),
         ],
@@ -609,8 +619,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context)
                       .colorScheme
-                      .onBackground
-                      .withOpacity(0.6)),
+                      .onSurface
+                      .withValues(alpha: 0.6 * 255)),
             ),
             const SizedBox(height: 24),
 
@@ -698,8 +708,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   int _safeInt(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.toInt();
-    if (v is String)
+    if (v is String) {
       return int.tryParse(v) ?? (double.tryParse(v)?.toInt() ?? 0);
+    }
     return 0;
   }
 

@@ -70,14 +70,14 @@ void main() {
         // In real sync, this would be handled by the sync service
         // For this test, we'll simulate by directly updating the database
         final product = await db.getProductByClientId(productId);
-        if (product != null && product.clientId != null) {
+        if (product != null) {
           // Simulate updating the product with new values
           await (db.update(db.products)
-                ..where((t) => t.clientId.equals(product.clientId!)))
+                ..where((t) => t.clientId.equals(product.clientId)))
               .write(ProductsCompanion(
             price: Value(update['price'] as double),
             stockQuantity: Value(update['stock'] as int),
-            updatedAt: Value(DateTime.now()),
+            lastUpdatedAt: Value(DateTime.now()),
           ));
         }
       }

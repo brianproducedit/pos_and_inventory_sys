@@ -1,5 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 import '../../config/env.dart';
 
 /// Response from login endpoint
@@ -55,6 +57,21 @@ class ApiClient {
   ApiClient({String? baseUrl, http.Client? client})
       : baseUrl = baseUrl ?? Env.baseUrl,
         _client = client ?? http.Client();
+
+  Future<String?> _getToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('access_token');
+  }
+
+  Future<String> _getClientId() async {
+    final prefs = await SharedPreferences.getInstance();
+    String? clientId = prefs.getString('client_id');
+    if (clientId == null) {
+      clientId = const Uuid().v4();
+      await prefs.setString('client_id', clientId);
+    }
+    return clientId;
+  }
 
   // ==================== SYNC ENDPOINTS ====================
 
@@ -300,14 +317,68 @@ class ApiClient {
 
   /// Push sync changes to server
   Future<SyncPushResponse> pushSync(List<Map<String, dynamic>> changes) async {
-    // TODO: Implement batch sync endpoint when available
-    throw UnimplementedError('pushSync not yet implemented');
+    final token = await _getToken();
+    final clientId = await _getClientId();
+
+    final payload = {
+      'client_id': clientId,
+      'changes': changes,
+    };
+
+    final response = await _client.post(
+      Uri.parse('$baseUrl/api/sync/push'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return SyncPushResponse(
+        applied: List<String>.from(data['applied'] ?? []),
+        idMap: Map<String, int>.from(data['id_map'] ?? {}),
+        conflicts: List<Map<String, dynamic>>.from(data['conflicts'] ?? []),
+      );
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to push sync changes',
+      );
+    }
   }
 
   /// Pull changes from server
   Future<SyncPullResponse> pullSync({required int sinceSeq}) async {
-    // TODO: Implement delta sync endpoint when available
-    throw UnimplementedError('pullSync not yet implemented');
+    final token = await _getToken();
+
+    final uri =
+        Uri.parse('$baseUrl/api/sync/changes').replace(queryParameters: {
+      'since_seq': sinceSeq.toString(),
+    });
+
+    final response = await _client.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return SyncPullResponse(
+        items: List<Map<String, dynamic>>.from(data['changes'] ?? []),
+        headSeq: data['head_seq'] as int? ?? sinceSeq,
+      );
+    } else {
+      final error = jsonDecode(response.body);
+      throw ApiException(
+        statusCode: response.statusCode,
+        message: error['detail'] ?? 'Failed to pull sync changes',
+      );
+    }
   }
 }
 

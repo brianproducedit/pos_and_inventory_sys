@@ -18,14 +18,19 @@ async def create_store(
     db: Session = Depends(get_db)
 ):
     """Create a new store"""
+    print(f"create_store: user_id={current_user.id}, username={current_user.username}, role={current_user.role}")
+    print(f"create_store: store_data={store_data.dict()}")
+
     # Only superadmin and admin can create stores
     if current_user.role not in [UserRole.superadmin, UserRole.admin]:
+        print(f"create_store: access denied for role {current_user.role}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to create stores"
         )
 
     # Create the store
+    print("create_store: creating store object")
     new_store = Store(
         name=store_data.name,
         location=store_data.location,
@@ -34,11 +39,16 @@ async def create_store(
     )
 
     try:
+        print("create_store: adding to database")
         db.add(new_store)
+        print("create_store: committing transaction")
         db.commit()
+        print("create_store: refreshing object")
         db.refresh(new_store)
+        print(f"create_store: success, created store id={new_store.id}")
         return StoreResponse.from_orm(new_store)
     except Exception as e:
+        print(f"create_store: error - {str(e)}")
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -51,8 +61,14 @@ async def get_my_stores(
     db: Session = Depends(get_db)
 ):
     """Get stores that the current user can access"""
-    stores = store_context.get_accessible_stores(db)
-    return [StoreResponse.from_orm(store) for store in stores]
+    print(f"get_my_stores: user_id={store_context.user.id}, role={store_context.user.role}")
+    try:
+        stores = store_context.get_accessible_stores(db)
+        print(f"get_my_stores: found {len(stores)} stores")
+        return [StoreResponse.from_orm(store) for store in stores]
+    except Exception as e:
+        print(f"get_my_stores: error - {str(e)}")
+        raise
 
 @router.get("/current")
 async def get_current_store(

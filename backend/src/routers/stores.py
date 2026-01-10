@@ -170,3 +170,40 @@ async def switch_store(
             "name": store.name if store else None
         }
     }
+
+@router.get("/debug")
+async def debug_stores(
+    db: Session = Depends(get_db)
+):
+    """Debug endpoint to check database and stores table"""
+    try:
+        # Check database connection
+        db.execute("SELECT 1")
+        
+        # Check if stores table exists
+        from sqlalchemy import inspect
+        inspector = inspect(db.bind)
+        tables = inspector.get_table_names()
+        
+        result = {
+            "database_connection": "OK",
+            "tables": tables,
+            "stores_table_exists": "stores" in tables
+        }
+        
+        if "stores" in tables:
+            # Check stores table structure
+            columns = inspector.get_columns("stores")
+            result["stores_columns"] = [col["name"] for col in columns]
+            
+            # Check number of stores
+            stores_count = db.query(Store).count()
+            result["stores_count"] = stores_count
+            
+        return result
+        
+    except Exception as e:
+        return {
+            "error": str(e),
+            "database_connection": "FAILED"
+        }

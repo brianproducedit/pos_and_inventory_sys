@@ -50,7 +50,7 @@ async def get_audit_logs(
         resource_type=resource_type,
         start_date=start_date,
         end_date=end_date,
-        store_id=store_id,
+        store_id=None,  # Don't filter by store for audit logs
     )
 
     # Logs are returned as dicts from AuditService; validate/convert them with Pydantic

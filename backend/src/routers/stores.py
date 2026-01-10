@@ -2,14 +2,48 @@ from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from src.database import get_db
-from src.models import Store, User, AnalyticsEvent
+from src.models import Store, User, AnalyticsEvent, UserRole
 from src.store_context import StoreContext, get_store_context
-from src.schemas import StoreResponse
+from src.schemas import StoreResponse, StoreCreate, StoreCreate
 from src.auth import get_current_active_user
 from datetime import datetime
 import json
 
 router = APIRouter(prefix="/api/stores", tags=["stores"])
+
+@router.post("", response_model=StoreResponse)
+async def create_store(
+    store_data: StoreCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Create a new store"""
+    # Only superadmin and admin can create stores
+    if current_user.role not in [UserRole.superadmin, UserRole.admin]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to create stores"
+        )
+
+    # Create the store
+    new_store = Store(
+        name=store_data.name,
+        location=store_data.location,
+        is_active=store_data.is_active,
+        created_by=current_user.id
+    )
+
+    try:
+        db.add(new_store)
+        db.commit()
+        db.refresh(new_store)
+        return StoreResponse.from_orm(new_store)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create store: {str(e)}"
+        )
 
 @router.get("", response_model=List[StoreResponse])
 async def get_my_stores(

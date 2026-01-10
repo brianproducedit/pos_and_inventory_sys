@@ -61,32 +61,8 @@ async def get_my_stores(
     db: Session = Depends(get_db)
 ):
     """Get stores that the current user can access"""
-    print(f"get_my_stores: DEBUG - Railway deployment check")
-    try:
-        # Temporary: For superadmin, return all stores directly
-        if store_context.is_superadmin:
-            print("get_my_stores: superadmin detected, querying stores table")
-            stores = db.query(Store).filter(Store.is_active == True).all()
-            print(f"get_my_stores: superadmin found {len(stores)} stores")
-            result = [StoreResponse.from_orm(store) for store in stores]
-            print(f"get_my_stores: returning {len(result)} stores")
-            return result
-        else:
-            print("get_my_stores: non-superadmin user")
-            stores = store_context.get_accessible_stores(db)
-            print(f"get_my_stores: found {len(stores)} stores")
-            return [StoreResponse.from_orm(store) for store in stores]
-    except Exception as e:
-        print(f"get_my_stores: error - {str(e)}")
-        import traceback
-        print(f"get_my_stores: traceback - {traceback.format_exc()}")
-        # Try to check database connection
-        try:
-            db.execute("SELECT 1")
-            print("get_my_stores: database connection OK")
-        except Exception as db_e:
-            print(f"get_my_stores: database connection error - {str(db_e)}")
-        raise
+    stores = store_context.get_accessible_stores(db)
+    return [StoreResponse.from_orm(store) for store in stores]
 
 @router.get("/current")
 async def get_current_store(
@@ -170,40 +146,3 @@ async def switch_store(
             "name": store.name if store else None
         }
     }
-
-@router.get("/debug")
-async def debug_stores(
-    db: Session = Depends(get_db)
-):
-    """Debug endpoint to check database and stores table"""
-    try:
-        # Check database connection
-        db.execute("SELECT 1")
-        
-        # Check if stores table exists
-        from sqlalchemy import inspect
-        inspector = inspect(db.bind)
-        tables = inspector.get_table_names()
-        
-        result = {
-            "database_connection": "OK",
-            "tables": tables,
-            "stores_table_exists": "stores" in tables
-        }
-        
-        if "stores" in tables:
-            # Check stores table structure
-            columns = inspector.get_columns("stores")
-            result["stores_columns"] = [col["name"] for col in columns]
-            
-            # Check number of stores
-            stores_count = db.query(Store).count()
-            result["stores_count"] = stores_count
-            
-        return result
-        
-    except Exception as e:
-        return {
-            "error": str(e),
-            "database_connection": "FAILED"
-        }

@@ -14,12 +14,12 @@ class SyncService {
   final dynamic db;
   final ResilientHttpClient httpClient;
   final String
-  serverBase; // instance-level server base so tests can override it
+      serverBase; // instance-level server base so tests can override it
   static const Uuid _uuid = Uuid();
 
   SyncService(this.db, {ResilientHttpClient? httpClient, String? serverBase})
-    : httpClient = httpClient ?? ResilientHttpClient(),
-      serverBase = serverBase ?? defaultServerBase;
+      : httpClient = httpClient ?? ResilientHttpClient(),
+        serverBase = serverBase ?? defaultServerBase;
 
   Future<String> enqueueCreateProduct({
     required String name,

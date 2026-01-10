@@ -23,16 +23,4 @@
     
     <!-- Flutter secure storage (encrypted credentials) -->
     <include domain="file" path="flutter_secure_storage" />
-    
-    <!-- Exclude temporary and cache files -->
-    <exclude domain="cache" path="." />
-    
-    <!-- Exclude image cache -->
-    <exclude domain="file" path="image_cache" />
-    
-    <!-- Exclude logs that might contain sensitive info -->
-    <exclude domain="file" path="logs" />
-    
-    <!-- Exclude temporary sync files -->
-    <exclude domain="file" path="sync_temp" />
 </full-backup-content>

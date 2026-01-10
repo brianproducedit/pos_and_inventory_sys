@@ -65,10 +65,14 @@ async def get_my_stores(
     try:
         # Temporary: For superadmin, return all stores directly
         if store_context.is_superadmin:
+            print("get_my_stores: superadmin detected, querying stores table")
             stores = db.query(Store).filter(Store.is_active == True).all()
             print(f"get_my_stores: superadmin found {len(stores)} stores")
-            return [StoreResponse.from_orm(store) for store in stores]
+            result = [StoreResponse.from_orm(store) for store in stores]
+            print(f"get_my_stores: returning {len(result)} stores")
+            return result
         else:
+            print("get_my_stores: non-superadmin user")
             stores = store_context.get_accessible_stores(db)
             print(f"get_my_stores: found {len(stores)} stores")
             return [StoreResponse.from_orm(store) for store in stores]
@@ -76,6 +80,12 @@ async def get_my_stores(
         print(f"get_my_stores: error - {str(e)}")
         import traceback
         print(f"get_my_stores: traceback - {traceback.format_exc()}")
+        # Try to check database connection
+        try:
+            db.execute("SELECT 1")
+            print("get_my_stores: database connection OK")
+        except Exception as db_e:
+            print(f"get_my_stores: database connection error - {str(db_e)}")
         raise
 
 @router.get("/current")

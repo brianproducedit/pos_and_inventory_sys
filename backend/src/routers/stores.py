@@ -61,7 +61,7 @@ async def get_my_stores(
     db: Session = Depends(get_db)
 ):
     """Get stores that the current user can access"""
-    print(f"get_my_stores: user_id={store_context.user.id}, role={store_context.user.role}")
+    print(f"get_my_stores: DEBUG - Railway deployment check")
     try:
         # Temporary: For superadmin, return all stores directly
         if store_context.is_superadmin:

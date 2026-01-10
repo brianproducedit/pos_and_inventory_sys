@@ -63,11 +63,19 @@ async def get_my_stores(
     """Get stores that the current user can access"""
     print(f"get_my_stores: user_id={store_context.user.id}, role={store_context.user.role}")
     try:
-        stores = store_context.get_accessible_stores(db)
-        print(f"get_my_stores: found {len(stores)} stores")
-        return [StoreResponse.from_orm(store) for store in stores]
+        # Temporary: For superadmin, return all stores directly
+        if store_context.is_superadmin:
+            stores = db.query(Store).filter(Store.is_active == True).all()
+            print(f"get_my_stores: superadmin found {len(stores)} stores")
+            return [StoreResponse.from_orm(store) for store in stores]
+        else:
+            stores = store_context.get_accessible_stores(db)
+            print(f"get_my_stores: found {len(stores)} stores")
+            return [StoreResponse.from_orm(store) for store in stores]
     except Exception as e:
         print(f"get_my_stores: error - {str(e)}")
+        import traceback
+        print(f"get_my_stores: traceback - {traceback.format_exc()}")
         raise
 
 @router.get("/current")

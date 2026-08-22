@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:mobile/services/sync_safety_wrapper.dart';
 import 'package:mobile/services/data_protection_service.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';

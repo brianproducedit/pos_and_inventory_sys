@@ -1,13 +1,13 @@
 import 'package:http/testing.dart';
 import 'package:http/http.dart' as http;
 
-typedef _Handler = Future<http.Response> Function(http.Request);
+typedef FakeHttpHandler = Future<http.Response> Function(http.Request);
 
 /// Lightweight helper to register path-based handlers and produce a MockClient.
 class FakeHttpClient {
-  final List<MapEntry<Pattern, _Handler>> _routes = [];
+  final List<MapEntry<Pattern, FakeHttpHandler>> _routes = [];
 
-  void when(Pattern pathMatcher, _Handler handler) =>
+  void when(Pattern pathMatcher, FakeHttpHandler handler) =>
       _routes.add(MapEntry(pathMatcher, handler));
 
   http.Client build() {

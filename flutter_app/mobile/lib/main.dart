@@ -60,6 +60,7 @@ import 'package:workmanager/workmanager.dart';
 import 'config/demo_config.dart';
 import 'data/demo/demo_seed.dart';
 import 'sync/sync_background.dart';
+import 'widgets/demo_banner.dart';
 
 void main() {
   // Capture Flutter framework errors
@@ -267,10 +268,7 @@ class MyApp extends StatelessWidget {
           if (DemoConfig.isDemoMode) {
             app = Directionality(
               textDirection: TextDirection.ltr,
-              child: Banner(
-                message: 'DEMO',
-                location: BannerLocation.topEnd,
-                color: Colors.orange,
+              child: DemoBanner(
                 child: app,
               ),
             );

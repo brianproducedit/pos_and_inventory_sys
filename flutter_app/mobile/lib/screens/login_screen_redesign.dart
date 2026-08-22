@@ -10,6 +10,7 @@ import 'package:mobile/providers/auth_provider.dart';
 import 'package:mobile/providers/store_provider.dart';
 import 'package:mobile/providers/sync_provider.dart';
 import 'package:mobile/theme/tokens.dart';
+import 'package:mobile/config/demo_config.dart';
 
 class LoginScreenRedesign extends StatefulWidget {
   const LoginScreenRedesign({super.key});
@@ -208,6 +209,48 @@ class _LoginScreenRedesignState extends State<LoginScreenRedesign> {
                             : PrimaryButton(
                                 onPressed: _submit,
                                 child: const Text('Sign in')),
+                        if (DemoConfig.isDemoMode) ...[
+                          const SizedBox(height: 24),
+                          Container(
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: Colors.amber.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.amber.shade400),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Demo Mode Active',
+                                  style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  _usernameController.text = 'demo';
+                                  _passwordController.text = 'demo123';
+                                },
+                                child: const Text('Fill Cashier'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  _usernameController.text = 'admin';
+                                  _passwordController.text = 'demo123';
+                                },
+                                child: const Text('Fill Admin'),
+                              ),
+                            ],
+                          ),
+                        ],
                       ],
                     ),
                   ),

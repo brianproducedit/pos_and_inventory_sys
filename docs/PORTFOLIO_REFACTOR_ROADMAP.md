@@ -135,26 +135,26 @@ If this repo is or will be public: **rotate Railway (and any reused) secrets imm
 
 **Goal:** Nothing is lost when you start deleting branches and files.
 
-- [ ] **0.1** Install GitHub CLI and authenticate  
+- [x] **0.1** Install GitHub CLI and authenticate  
   - [ ] `winget install GitHub.cli` (or installer from github.com/cli/cli)  
   - [ ] `gh auth login`  
   - [ ] Confirm: `gh repo view brianproducedit/pos_and_inventory_sys`
 
-- [ ] **0.2** Snapshot the current work  
+- [x] **0.2** Snapshot the current work  
   - [ ] `git tag backup/pre-portfolio-refactor` on current `master`  
   - [ ] `git push origin backup/pre-portfolio-refactor`  
   - [ ] Optional zip of the repo folder off-git (APKs, keystore, `.env` if they exist only locally)
 
-- [ ] **0.3** Decide fate of **uncommitted** mobile/sync changes  
+- [x] **0.3** Decide fate of **uncommitted** mobile/sync changes  
   - [ ] Read `docs/OFFLINE_SYNC_FIXES_ROADMAP.md` vs the diffs in `sale_repository_v2.dart`, `sync_repository.dart`, `app_database.dart`, `auth_service.dart`, `sync_service.dart`, `main.dart`  
   - [ ] Either: commit them on `master` as `fix: offline sync and login` **or** stash and revisit in Phase 7  
   - [ ] Do **not** start Phase 2 with a dirty working tree
 
-- [ ] **0.4** Confirm repo visibility  
+- [x] **0.4** Confirm repo visibility  
   - [ ] If **public** (or about to be): start Phase 1.1 (rotate secrets) **today**  
   - [ ] If **private** until polish: still rotate; assume it will be public for applications
 
-**Phase 0 complete:** [ ]
+**Phase 0 complete:** [x]
 
 ---
 
@@ -164,12 +164,12 @@ If this repo is or will be public: **rotate Railway (and any reused) secrets imm
 
 ### 1.1 Rotate everything that leaked
 
-- [ ] **1.1.1** Retire Railway (preferred) or rotate if you keep it privately  
+- [x] **1.1.1** Retire Railway (preferred) or rotate if you keep it privately  
   - [ ] **Delete the Railway project/service** so this portfolio does not depend on a paid host  
   - [ ] Change `SECRET_KEY` and `DEFAULT_SUPERADMIN_PASSWORD` if the service still exists for 24h  
   - [ ] Change any user passwords that matched `bk007bang`
 
-- [ ] **1.1.2** Search the tree for leftovers (after edits, search again)  
+- [x] **1.1.2** Search the tree for leftovers (after edits, search again)  
   - [ ] `bk007bang`  
   - [ ] `SWiPZ7LS` / JWT-looking strings  
   - [ ] `up.railway.app`  
@@ -178,23 +178,23 @@ If this repo is or will be public: **rotate Railway (and any reused) secrets imm
 
 ### 1.2 Remove secrets and production URLs from the tree
 
-- [ ] **1.2.1** Delete or rewrite `docs/RAILWAY_DEPLOYMENT_ROADMAP.md` (do not keep the password/key even “for history”)
-- [ ] **1.2.2** Strip credentials from ad-hoc tests; point them at env vars or delete the scripts (Phase 3)
-- [ ] **1.2.3** Stop committing generated env:  
+- [x] **1.2.1** Delete or rewrite `docs/RAILWAY_DEPLOYMENT_ROADMAP.md` (do not keep the password/key even “for history”)
+- [x] **1.2.2** Strip credentials from ad-hoc tests; point them at env vars or delete the scripts (Phase 3)
+- [x] **1.2.3** Stop committing generated env:  
   - [ ] Add `flutter_app/mobile/lib/config/env.g.dart` to `.gitignore` **or** generate it with a **localhost** default and `obfuscate: true`  
   - [ ] Add `flutter_app/mobile/.env.example` with `BASE_URL=http://10.0.2.2:8000` (Android emulator → host) and `http://localhost:8000` for desktop/web  
   - [ ] Document `--dart-define=BASE_URL=...` as the release override
-- [ ] **1.2.4** Add `backend/.env.example` (`DATABASE_URL`, `SECRET_KEY`, `DEFAULT_SUPERADMIN_*`) with **placeholders only**
-- [ ] **1.2.5** Tighten `.gitignore`: `.env`, `*.jks`, `key.properties`, `*.apk`, `*.aab`, `keystore/`
+- [x] **1.2.4** Add `backend/.env.example` (`DATABASE_URL`, `SECRET_KEY`, `DEFAULT_SUPERADMIN_*`) with **placeholders only**
+- [x] **1.2.5** Tighten `.gitignore`: `.env`, `*.jks`, `key.properties`, `*.apk`, `*.aab`, `keystore/`
 
 ### 1.3 Git history (choose one)
 
 Pick **A** if the repo is already public or you have shared the URL. Pick **B** only if you are comfortable rewriting history and force-pushing.
 
-- [ ] **Option A (minimum):** rotate or **delete Railway** (1.1) + remove from current tree (1.2). Old commits may still contain the password; they must be useless because the service is gone.
+- [x] **Option A (minimum):** rotate or **delete Railway** (1.1) + remove from current tree (1.2). Old commits may still contain the password; they must be useless because the service is gone.
 - [ ] **Option B (stronger):** `git filter-repo` (or BFG) to purge `RAILWAY_DEPLOYMENT_ROADMAP.md` and files that embed passwords, then force-push `main`. Re-add a **redacted** setup doc. Notify: anyone with an old clone must re-clone.
 
-**Phase 1 complete:** [ ]
+**Phase 1 complete:** [x]
 
 ---
 
@@ -210,33 +210,33 @@ Pick **A** if the repo is already public or you have shared the URL. Pick **B** 
 
 ### 2.1 Update `main` to match `master`
 
-- [ ] **2.1.1** Working tree clean; backup tag pushed (Phase 0.2)
-- [ ] **2.1.2** Local: `git checkout master` then `git branch -f main master` (or `git checkout -B main master`)
-- [ ] **2.1.3** Push: `git push origin main --force`  
+- [x] **2.1.1** Working tree clean; backup tag pushed (Phase 0.2)
+- [x] **2.1.2** Local: `git checkout master` then `git branch -f main master` (or `git checkout -B main master`)
+- [x] **2.1.3** Push: `git push origin main --force`  
   - Justification: `origin/main` is a leftover initial commit, not a protected production history you care about.  
   - If GitHub branch protection blocks this, disable protection on `main` temporarily.
-- [ ] **2.1.4** Confirm GitHub default branch is `main` (Settings → General → Default branch)
-- [ ] **2.1.5** Confirm `main` tip equals former `master` tip (`48117a4` or whatever commit you tagged)
+- [x] **2.1.4** Confirm GitHub default branch is `main` (Settings → General → Default branch)
+- [x] **2.1.5** Confirm `main` tip equals former `master` tip (`48117a4` or whatever commit you tagged)
 
 ### 2.2 Delete extra branches
 
 Delete **remote first**, then local.
 
-- [ ] **2.2.1** `git push origin --delete master`
-- [ ] **2.2.2** `git push origin --delete feat/sync-offline` (if it exists)
-- [ ] **2.2.3** `git push origin --delete refactor/drift-migration-roadmap`
-- [ ] **2.2.4** In GitHub UI, delete any other remote branches (open PRs first: close or merge)
-- [ ] **2.2.5** Local: `git branch -D master` after you are on `main`
-- [ ] **2.2.6** Local: `git branch -D feature/v2-offline-first`
-- [ ] **2.2.7** Local: `git branch -D refactor/drift-migration-roadmap`
-- [ ] **2.2.8** `git remote prune origin` and confirm `git branch -a` shows only `main` (+ `origin/main`)
+- [x] **2.2.1** `git push origin --delete master`
+- [x] **2.2.2** `git push origin --delete feat/sync-offline` (if it exists)
+- [x] **2.2.3** `git push origin --delete refactor/drift-migration-roadmap`
+- [x] **2.2.4** In GitHub UI, delete any other remote branches (open PRs first: close or merge)
+- [x] **2.2.5** Local: `git branch -D master` after you are on `main`
+- [x] **2.2.6** Local: `git branch -D feature/v2-offline-first`
+- [x] **2.2.7** Local: `git branch -D refactor/drift-migration-roadmap`
+- [x] **2.2.8** `git remote prune origin` and confirm `git branch -a` shows only `main` (+ `origin/main`)
 
 ### 2.3 Point tools at `main` only
 
-- [ ] **2.3.1** CI `on.push.branches` / `pull_request.branches` → `main` only (done for real in Phase 6)
-- [ ] **2.3.2** Any docs that say “merge to master” → `main`
+- [x] **2.3.1** CI `on.push.branches` / `pull_request.branches` → `main` only (done for real in Phase 6)
+- [x] **2.3.2** Any docs that say “merge to master” → `main`
 
-**Phase 2 complete:** [ ]
+**Phase 2 complete:** [x]
 
 ---
 
@@ -248,9 +248,9 @@ After each sub-phase: `rg` the tree for the deleted names and for `railway`, `bk
 
 ### 3.1 Unused Flutter projects
 
-- [ ] **3.1.1** Delete entire `flutter_app/desktop/` (default Flutter counter app)
-- [ ] **3.1.2** Delete entire `flutter_app/shared/` (pre-Drift SQLite models / old sync)
-- [ ] **3.1.3** Grep and remove references: `package:desktop`, `package:shared`, `flutter_app/desktop`, `flutter_app/shared`
+- [x] **3.1.1** Delete entire `flutter_app/desktop/` (default Flutter counter app)
+- [x] **3.1.2** Delete entire `flutter_app/shared/` (pre-Drift SQLite models / old sync)
+- [x] **3.1.3** Grep and remove references: `package:desktop`, `package:shared`, `flutter_app/desktop`, `flutter_app/shared`
 
 ### 3.2 Railway / live-URL scratch scripts (not pytest)
 
@@ -258,55 +258,55 @@ Keep: `docker-compose.yml`, `backend/Dockerfile`, `backend/entrypoint.sh`, `back
 
 Delete:
 
-- [ ] **3.2.1** `backend/test_railway_backend.py`
-- [ ] **3.2.2** `backend/test_railway_comprehensive.py`
-- [ ] **3.2.3** `backend/test_railway_detailed.py`
-- [ ] **3.2.4** `backend/test_product_sync.py`
-- [ ] **3.2.5** `backend/test_store_sync.py`
-- [ ] **3.2.6** `backend/test_audit_api_remote.py`
-- [ ] **3.2.7** Remaining `backend/test_*.py` at **backend root** (pytest lives in `backend/tests/`): `test_api.py`, `test_auth.py`, `test_me.py`, `test_stores.py`, `test_sync_endpoint.py`, `test_make_change.py`, `test_hard_delete_endpoint.py`, `test_audit_api.py`, `test_audit_structure.py`, `test_local_audit.py`, `test_store_switch_flow.py`
-- [ ] **3.2.8** Repo-root `test_audit_structure.py`, `test_sync_endpoint.py`, `test_sync_flow.md`
-- [ ] **3.2.9** Flutter one-offs: `flutter_app/mobile/test_api_connection.dart`, `test_sync_push.dart`, `test_sync_push_simple.dart`
-- [ ] **3.2.10** Replace any remaining hardcoded `up.railway.app` with env / demo mode (Phase 5). Confirm no `railway.json` / `nixpacks.toml` / `Procfile`.
+- [x] **3.2.1** `backend/test_railway_backend.py`
+- [x] **3.2.2** `backend/test_railway_comprehensive.py`
+- [x] **3.2.3** `backend/test_railway_detailed.py`
+- [x] **3.2.4** `backend/test_product_sync.py`
+- [x] **3.2.5** `backend/test_store_sync.py`
+- [x] **3.2.6** `backend/test_audit_api_remote.py`
+- [x] **3.2.7** Remaining `backend/test_*.py` at **backend root** (pytest lives in `backend/tests/`): `test_api.py`, `test_auth.py`, `test_me.py`, `test_stores.py`, `test_sync_endpoint.py`, `test_make_change.py`, `test_hard_delete_endpoint.py`, `test_audit_api.py`, `test_audit_structure.py`, `test_local_audit.py`, `test_store_switch_flow.py`
+- [x] **3.2.8** Repo-root `test_audit_structure.py`, `test_sync_endpoint.py`, `test_sync_flow.md`
+- [x] **3.2.9** Flutter one-offs: `flutter_app/mobile/test_api_connection.dart`, `test_sync_push.dart`, `test_sync_push_simple.dart`
+- [x] **3.2.10** Replace any remaining hardcoded `up.railway.app` with env / demo mode (Phase 5). Confirm no `railway.json` / `nixpacks.toml` / `Procfile`.
 
 ### 3.3 Backend inspect / check / cleanup one-offs
 
 These are REPL scripts against a live DB, not product:
 
-- [ ] **3.3.1** `backend/check_stores.py`, `check_all_products.py`, `check_changes_table.py`, `check_sync_queue.py`, `check_product_sales.py`
-- [ ] **3.3.2** `backend/inspect_db.py`, `inspect_products.py`, `inspect_audit_logs.py`, `inspect_stores.py`
-- [ ] **3.3.3** `backend/cleanup_inactive_stores.py`
-- [ ] **3.3.4** `backend/scripts/debug_product_create.py`, `debug_analytics.py`, `debug_create_admin.py`
-- [ ] **3.3.5** Decide: keep **one** `backend/scripts/seed_demo.py` (written in Phase 5) and delete the rest of ad-hoc seeders
+- [x] **3.3.1** `backend/check_stores.py`, `check_all_products.py`, `check_changes_table.py`, `check_sync_queue.py`, `check_product_sales.py`
+- [x] **3.3.2** `backend/inspect_db.py`, `inspect_products.py`, `inspect_audit_logs.py`, `inspect_stores.py`
+- [x] **3.3.3** `backend/cleanup_inactive_stores.py`
+- [x] **3.3.4** `backend/scripts/debug_product_create.py`, `debug_analytics.py`, `debug_create_admin.py`
+- [x] **3.3.5** Decide: keep **one** `backend/scripts/seed_demo.py` (written in Phase 5) and delete the rest of ad-hoc seeders
 
 ### 3.4 Deprecated app code and developer-only UI
 
-- [ ] **3.4.1** Inventory `lib/` for unused V1: `product_service.dart`, unused `*_service.dart` if repositories replaced them; delete if `rg` shows no production imports
-- [ ] **3.4.2** Delete or stop routing `lib/ui/sync_demo.dart` (`SyncDemoScreen`) — not a product screen
-- [ ] **3.4.3** Delete or hide `theme_preview_screen.dart` unless used in the settings UI
-- [ ] **3.4.4** Remove `Sync Demo` / “Seed DB” drawer items except behind `kDebugMode` **or** replace with the official Demo mode toggle (Phase 5)
-- [ ] **3.4.5** Delete `flutter_app/mobile/android/proxy-ca.cer` and `proxy-ca-browser.cer` (personal proxy; not for recruiters)
-- [ ] **3.4.6** Strip personal proxy `setx HTTP_PROXY` notes from `flutter_app/mobile/README.md` / `ENVIRONMENT_SETUP.md`
+- [x] **3.4.1** Inventory `lib/` for unused V1: `product_service.dart`, unused `*_service.dart` if repositories replaced them; delete if `rg` shows no production imports
+- [x] **3.4.2** Delete or stop routing `lib/ui/sync_demo.dart` (`SyncDemoScreen`) — not a product screen
+- [x] **3.4.3** Delete or hide `theme_preview_screen.dart` unless used in the settings UI
+- [x] **3.4.4** Remove `Sync Demo` / “Seed DB” drawer items except behind `kDebugMode` **or** replace with the official Demo mode toggle (Phase 5)
+- [x] **3.4.5** Delete `flutter_app/mobile/android/proxy-ca.cer` and `proxy-ca-browser.cer` (personal proxy; not for recruiters)
+- [x] **3.4.6** Strip personal proxy `setx HTTP_PROXY` notes from `flutter_app/mobile/README.md` / `ENVIRONMENT_SETUP.md`
 
 ### 3.5 Duplicate / junk docs and env templates (files, not the rewrite in Phase 4)
 
-- [ ] **3.5.1** Delete `flutter_app/mobile/ENVIRONMENT_SETUP.md` if it duplicates root/docs setup
-- [ ] **3.5.2** Delete placeholder READMEs inside `lib/data/repositories`, `lib/domain`, `lib/data/utilities` if they only say “files to add”
-- [ ] **3.5.3** Delete generated junk from git if present: `*.iml`, local `.env`, built APKs
+- [x] **3.5.1** Delete `flutter_app/mobile/ENVIRONMENT_SETUP.md` if it duplicates root/docs setup
+- [x] **3.5.2** Delete placeholder READMEs inside `lib/data/repositories`, `lib/domain`, `lib/data/utilities` if they only say “files to add”
+- [x] **3.5.3** Delete generated junk from git if present: `*.iml`, local `.env`, built APKs
 
 ### 3.6 Backend defaults after Railway is gone
 
-- [ ] **3.6.1** CORS: `CORS_ORIGINS` env; examples use localhost, not `*`
-- [ ] **3.6.2** Remove leftover **debug** store/schema dump endpoints from the Railway 500-debug commits; keep `/health`
-- [ ] **3.6.3** Superadmin password only from env / `.env.example` placeholders (`changeme`), never a real password
+- [x] **3.6.1** CORS: `CORS_ORIGINS` env; examples use localhost, not `*`
+- [x] **3.6.2** Remove leftover **debug** store/schema dump endpoints from the Railway 500-debug commits; keep `/health`
+- [x] **3.6.3** Superadmin password only from env / `.env.example` placeholders (`changeme`), never a real password
 
 ### 3.7 Verification
 
-- [ ] **3.7.1** `rg -i railway` returns only this roadmap (until Phase 4/9) or a one-line “not used” note
-- [ ] **3.7.2** `cd backend && pytest -q` still collects `tests/`
-- [ ] **3.7.3** `cd flutter_app/mobile && flutter analyze` has no missing-file errors from deletions
+- [x] **3.7.1** `rg -i railway` returns only this roadmap (until Phase 4/9) or a one-line “not used” note
+- [x] **3.7.2** `cd backend && pytest -q` still collects `tests/`
+- [x] **3.7.3** `cd flutter_app/mobile && flutter analyze` has no missing-file errors from deletions
 
-**Phase 3 complete:** [ ]
+**Phase 3 complete:** [x]
 
 ---
 
@@ -318,27 +318,27 @@ These are REPL scripts against a live DB, not product:
 
 Safe to delete once Phase 1.2 has removed secrets from any file you are not deleting:
 
-- [ ] **4.1.1** Day logs: `DAY_1_IMPLEMENTATION_SUMMARY.md` … `DAY_5_IMPLEMENTATION_SUMMARY.md`
-- [ ] **4.1.2** Phase logs: `PHASE_3.6_PROGRESS.md`, `PHASE_3.6_UI_MIGRATION_GUIDE.md`, `PHASE_7_COMPLETION_SUMMARY.md`
-- [ ] **4.1.3** Completed migration reports: `V2_MIGRATION_COMPLETION_REPORT.md`, `V2_OFFLINE_FIRST_AUDIT_REPORT.md`, `V2_REMEDIATION_ROADMAP.md`, `V2_OFFLINE_FIRST_ROADMAP.md` (replace with a short architecture section in README + one doc in 4.2)
-- [ ] **4.1.4** `DRIFT_MIGRATION_ROADMAP.md`, `TEST_CLEANUP_SUMMARY.md`, `flutter_app/mobile/docs/ui_integration_roadmap.md`
-- [ ] **4.1.5** `RAILWAY_DEPLOYMENT_ROADMAP.md` (after secret rotation)
-- [ ] **4.1.6** Root `test_sync_flow.md` if redundant with `docs/sync_runbook.md`
+- [x] **4.1.1** Day logs: `DAY_1_IMPLEMENTATION_SUMMARY.md` … `DAY_5_IMPLEMENTATION_SUMMARY.md`
+- [x] **4.1.2** Phase logs: `PHASE_3.6_PROGRESS.md`, `PHASE_3.6_UI_MIGRATION_GUIDE.md`, `PHASE_7_COMPLETION_SUMMARY.md`
+- [x] **4.1.3** Completed migration reports: `V2_MIGRATION_COMPLETION_REPORT.md`, `V2_OFFLINE_FIRST_AUDIT_REPORT.md`, `V2_REMEDIATION_ROADMAP.md`, `V2_OFFLINE_FIRST_ROADMAP.md` (replace with a short architecture section in README + one doc in 4.2)
+- [x] **4.1.4** `DRIFT_MIGRATION_ROADMAP.md`, `TEST_CLEANUP_SUMMARY.md`, `flutter_app/mobile/docs/ui_integration_roadmap.md`
+- [x] **4.1.5** `RAILWAY_DEPLOYMENT_ROADMAP.md` (after secret rotation)
+- [x] **4.1.6** Root `test_sync_flow.md` if redundant with `docs/sync_runbook.md`
 
 **Keep this roadmap** (`PORTFOLIO_REFACTOR_ROADMAP.md`) until all phases are checked, then either keep it as project history or delete it in Phase 9.
 
 ### 4.2 Keep / rewrite a small evergreen set
 
-- [ ] **4.2.1** `docs/ARCHITECTURE.md` — one diagram: UI → Drift → sync queue → FastAPI → Postgres; roles; offline rules. Fold in the useful bits of `OFFLINE_FIRST_IMPLEMENTATION.md`, `client_sync_design.md`, `developer_guide_offline_first.md`.
-- [ ] **4.2.2** `docs/LOCAL_SETUP.md` — (1) APK demo mode, (2) optional Compose + Flutter. No Railway.
-- [ ] **4.2.3** `docs/API.md` — point to `/docs` (OpenAPI) + short notes from `sync_api_spec.md`
-- [ ] **4.2.4** `docs/APK_INSTALLATION_GUIDE.md` — rewrite with the **real** Releases URL: `https://github.com/brianproducedit/pos_and_inventory_sys/releases`
-- [ ] **4.2.5** Optional keep: `docs/user_guide_offline_usage.md`, `docs/support_faq.md`, `docs/backup_recovery_procedures.md` (trim; no internal passwords)
-- [ ] **4.2.6** Optional keep: `docs/PERFORMANCE_OPTIMIZATION.md`, `docs/DATABASE_LOCK_PREVENTION.md` if still accurate
-- [ ] **4.2.7** Delete `flutter_app/mobile/README.md` Flutter-template + proxy notes; replace with 10 lines pointing to root README
-- [ ] **4.2.8** Rewrite `backend/README.md` to point at root README + `docs/LOCAL_SETUP.md` (remove stray `flutter pub run` / “Next steps” junk)
+- [x] **4.2.1** `docs/ARCHITECTURE.md` — one diagram: UI → Drift → sync queue → FastAPI → Postgres; roles; offline rules. Fold in the useful bits of `OFFLINE_FIRST_IMPLEMENTATION.md`, `client_sync_design.md`, `developer_guide_offline_first.md`.
+- [x] **4.2.2** `docs/LOCAL_SETUP.md` — (1) APK demo mode, (2) optional Compose + Flutter. No Railway.
+- [x] **4.2.3** `docs/API.md` — point to `/docs` (OpenAPI) + short notes from `sync_api_spec.md`
+- [x] **4.2.4** `docs/APK_INSTALLATION_GUIDE.md` — rewrite with the **real** Releases URL: `https://github.com/brianproducedit/pos_and_inventory_sys/releases`
+- [x] **4.2.5** Optional keep: `docs/user_guide_offline_usage.md`, `docs/support_faq.md`, `docs/backup_recovery_procedures.md` (trim; no internal passwords)
+- [x] **4.2.6** Optional keep: `docs/PERFORMANCE_OPTIMIZATION.md`, `docs/DATABASE_LOCK_PREVENTION.md` if still accurate
+- [x] **4.2.7** Delete `flutter_app/mobile/README.md` Flutter-template + proxy notes; replace with 10 lines pointing to root README
+- [x] **4.2.8** Rewrite `backend/README.md` to point at root README + `docs/LOCAL_SETUP.md` (remove stray `flutter pub run` / “Next steps” junk)
 
-**Phase 4 complete:** [ ]
+**Phase 4 complete:** [x]
 
 ---
 
@@ -350,32 +350,32 @@ The app already stores users, stores, products, and sales in Drift and can log i
 
 ### 5.1 Demo mode flag
 
-- [ ] **5.1.1** Add a single switch, e.g. `--dart-define=DEMO_MODE=true` (default **true** for release APK) and `false` only when a reviewer runs Compose
-- [ ] **5.1.2** When `DEMO_MODE=true`: skip live `BASE_URL`; do not call Railway or any host; disable background `Workmanager` sync or no-op it
-- [ ] **5.1.3** Persistent banner: `Demo — local data, sync off` on home and POS (so it is honest in interviews)
+- [x] **5.1.1** Add a single switch, e.g. `--dart-define=DEMO_MODE=true` (default **true** for release APK) and `false` only when a reviewer runs Compose
+- [x] **5.1.2** When `DEMO_MODE=true`: skip live `BASE_URL`; do not call Railway or any host; disable background `Workmanager` sync or no-op it
+- [x] **5.1.3** Persistent banner: `Demo — local data, sync off` on home and POS (so it is honest in interviews)
 - [ ] **5.1.4** Settings: “Local demo” vs “Connect to server” (server = user-typed `http://10.0.2.2:8000` or LAN IP). Connecting is opt-in, never a baked PaaS URL
-- [ ] **5.1.5** If `DEMO_MODE=false` and the API is down: fall back to local data + banner, **do not** freeze on login errors
+- [x] **5.1.5** If `DEMO_MODE=false` and the API is down: fall back to local data + banner, **do not** freeze on login errors
 
 ### 5.2 First-launch seed (Flutter / Drift)
 
 Create `lib/data/demo/demo_seed.dart` (name flexible). Idempotent: only seed if `users` (or a `demo_seeded` pref) is empty.
 
-- [ ] **5.2.1** Users (password hashes the app’s offline auth already understands):  
+- [x] **5.2.1** Users (password hashes the app’s offline auth already understands):  
   - `demo` / `demo123` — **cashier**  
   - `admin` / `demo123` — **admin**  
   - `superadmin` / `demo123` — **superadmin**  
   - Mark `isLocalOnly = true`; never use production passwords
-- [ ] **5.2.2** Stores: e.g. “Harare CBD” and “Avondale”
-- [ ] **5.2.3** Products: 8–15 SKUs with prices and stock (beverages, snacks, airtime-style items — enough for a live POS demo)
-- [ ] **5.2.4** Sales + sale items: 10–20 past sales across a few days so **analytics and sales history** are not empty
-- [ ] **5.2.5** Receipt / transaction numbers increment from a sensible start (no `sale# null`)
+- [x] **5.2.2** Stores: e.g. “Harare CBD” and “Avondale”
+- [x] **5.2.3** Products: 8–15 SKUs with prices and stock (beverages, snacks, airtime-style items — enough for a live POS demo)
+- [x] **5.2.4** Sales + sale items: 10–20 past sales across a few days so **analytics and sales history** are not empty
+- [x] **5.2.5** Receipt / transaction numbers increment from a sensible start (no `sale# null`)
 - [ ] **5.2.6** Optional: one inventory log / audit row so those screens are not blank
 - [ ] **5.2.7** Unit test: empty DB → seed → expected user and product counts; second run does not duplicate
 
 ### 5.3 Login and POS without a network
 
-- [ ] **5.3.1** Login screen copy: demo credentials visible in debug/demo builds (or a “Fill demo cashier” button)
-- [ ] **5.3.2** `OfflineAuthService.login`: if demo user exists locally, **do not require** connectivity; skip `loginOnline` in demo mode
+- [x] **5.3.1** Login screen copy: demo credentials visible in debug/demo builds (or a “Fill demo cashier” button)
+- [x] **5.3.2** `OfflineAuthService.login`: if demo user exists locally, **do not require** connectivity; skip `loginOnline` in demo mode
 - [ ] **5.3.3** Store picker works from seeded stores
 - [ ] **5.3.4** Full cashier loop: add to cart → checkout → receipt → stock decrements → sale in history
 - [ ] **5.3.5** Admin loop: add/edit product, see it on POS
@@ -386,7 +386,7 @@ Create `lib/data/demo/demo_seed.dart` (name flexible). Idempotent: only seed if 
 
 - [ ] **5.4.1** `docker compose up --build` → Postgres + API on `:8000`; `GET /health` ok
 - [ ] **5.4.2** Alembic + superadmin from `.env.example` (`changeme`)
-- [ ] **5.4.3** `backend/scripts/seed_demo.py` loads the **same** catalog as the Flutter seed (stores/products) so sync demos match
+- [x] **5.4.3** `backend/scripts/seed_demo.py` loads the **same** catalog as the Flutter seed (stores/products) so sync demos match
 - [ ] **5.4.4** Compose healthcheck on backend (`curl /health`)
 - [ ] **5.4.5** Document emulator URL `http://10.0.2.2:8000` and physical-device LAN IP
 - [ ] **5.4.6** `flutter analyze` / `flutter test` never need a running server or Railway
@@ -399,9 +399,9 @@ Create `lib/data/demo/demo_seed.dart` (name flexible). Idempotent: only seed if 
 
 ### 5.6 What not to do
 
-- [ ] **5.6.1** Do not add a free-tier Railway/Render “for the portfolio”
-- [ ] **5.6.2** Do not commit a production `BASE_URL`
-- [ ] **5.6.3** Do not ship an empty-database APK that only works after “talk to my server”
+- [x] **5.6.1** Do not add a free-tier Railway/Render “for the portfolio”
+- [x] **5.6.2** Do not commit a production `BASE_URL`
+- [x] **5.6.3** Do not ship an empty-database APK that only works after “talk to my server”
 
 **Phase 5 complete:** [ ]
 
@@ -580,12 +580,12 @@ This is one person, part-time. Adjust, but do not reorder 1 before 2 if the repo
 
 | Phase | Status | Date completed | Notes |
 | --- | --- | --- | --- |
-| 0 Pre-flight | Not started | | |
-| 1 Secrets | Not started | | Rotate before public |
+| 0 Pre-flight | Done | | |
+| 1 Secrets | Done | | Rotate before public |
 | 2 One `main` | Not started | | Force-push `main` = old `master` |
-| 3 File purge | Not started | | Desktop, shared, Railway scripts, V1 |
-| 4 Docs diet | Not started | | |
-| 5 Mock/demo (no PaaS) | Not started | | Seed Drift; APK works offline |
+| 3 File purge | Done | | Desktop, shared, Railway scripts, V1 |
+| 4 Docs diet | Done | | |
+| 5 Mock/demo (no PaaS) | In Progress | | Seed Drift; APK works offline |
 | 6 CI + release workflow | Not started | | |
 | 7 Code polish | Not started | | Includes uncommitted sync |
 | 8 APK on Releases | Not started | | `DEMO_MODE=true` |

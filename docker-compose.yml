@@ -26,7 +26,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/pos_inventory_db
       - SECRET_KEY=${SECRET_KEY:-devsecretkey}
       - DEFAULT_SUPERADMIN_USERNAME=${DEFAULT_SUPERADMIN_USERNAME:-superadmin}
-      - DEFAULT_SUPERADMIN_PASSWORD=${DEFAULT_SUPERADMIN_PASSWORD}
+      - DEFAULT_SUPERADMIN_PASSWORD=${DEFAULT_SUPERADMIN_PASSWORD:-changeme}
     depends_on:
       - db
     ports:

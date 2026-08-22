@@ -32,3 +32,16 @@ Thumbs.db
 .flutter-plugins
 .packages
 .pub-cache/
+
+# Signing (NEVER commit)
+*.jks
+*.keystore
+key.properties
+keystore/
+
+# Release artifacts
+*.apk
+*.aab
+
+# Generated env (contains URLs, may contain secrets)
+**/env.g.dart

@@ -42,8 +42,16 @@ app.*.map.json
 
 # Android Studio will place build artifacts here
 /android/app/debug
-
-# Local truststore for corporate proxy (do not commit)
-android/proxy-truststore.jks
 /android/app/profile
 /android/app/release
+
+# Signing (NEVER commit)
+*.jks
+key.properties
+
+# Generated env
+lib/config/env.g.dart
+
+# Release artifacts
+*.apk
+*.aab

@@ -4,15 +4,18 @@ from src.routers import auth, users, products, sales, inventory, settings, audit
 from src.metrics import MetricsMiddleware, metrics_endpoint, update_business_metrics
 from src.feature_flags import feature_flags
 
+import os
+
 app = FastAPI(title="POS and Inventory System API", version="1.0.0")
 
 # Add metrics middleware
 app.add_middleware(MetricsMiddleware)
 
-# CORS for Flutter
+# CORS — controlled via CORS_ORIGINS env var (comma-separated)
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8080").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Change in production
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

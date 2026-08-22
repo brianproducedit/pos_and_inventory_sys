@@ -1,25 +1,23 @@
-# Backend README
+# POS & Inventory — Backend
 
-## Setup
-1. Create virtual environment: `python -m venv venv`
-2. Activate: `venv\Scripts\activate` (Windows)
-3. Install dependencies: `pip install -r requirements.txt`
-4. Copy `.env.example` to `.env` and fill in actual values
-5. Run: `uvicorn src.main:app --reload` or `python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload`
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+FastAPI and PostgreSQL backend for the POS & Inventory system. 
 
-## Environment Variables
-- `DATABASE_URL`: Database connection string
-- `SECRET_KEY`: JWT secret key
-- `PAYNOW_INTEGRATION_ID`: Paynow integration ID
-- `PAYNOW_INTEGRATION_KEY`: Paynow integration key
+Provides JWT authentication, role-based access control, and robust background synchronization endpoints for offline-first Flutter clients.
 
-## Structure
-- `src/`: Source code
-- `tests/`: Unit tests
-- Alembic migrations in `alembic/versions/`
+## Quick Start
+See the [root README](../README.md) for the project overview and architecture.
 
+For running this backend via Docker or locally, refer to the [Local Setup Guide](../docs/LOCAL_SETUP.md).
 
-flutter pub run build_runner build --delete-conflicting-outputs
+## Project Structure
+- `src/` — Main FastAPI application, models, routers, and services
+- `tests/` — Pytest suite
+- `alembic/` — Database migrations
+- `requirements.txt` — Python dependencies
 
-Add server-side filters (by date range, store) exposed in the UI and also serach functionlity.
+## Testing
+To run the automated tests:
+```bash
+pip install -r requirements.txt
+python -m pytest
+```

@@ -53,7 +53,6 @@ import 'data/repositories/sale_repository_v2.dart' as v2;
 import 'data/repositories/inventory_repository_v2.dart' as v2;
 import 'data/repositories/settings_repository_v2.dart' as v2;
 import 'data/repositories/analytics_repository_v2.dart' as v2;
-import 'ui/sync_demo.dart';
 import 'ui/admin/sync_errors_screen.dart';
 import 'dart:async';
 import 'dart:io';
@@ -269,7 +268,6 @@ class MyApp extends StatelessWidget {
             '/user_profile': (context) => const UserProfileScreen(),
             '/audit_logs': (context) => const AuditLogsScreen(),
             '/data_protection': (context) => const DataProtectionScreen(),
-            '/sync_demo': (context) => const SyncDemoScreen(),
             '/admin/sync-errors': (context) => const SyncErrorsScreen(),
             // Dev preview routes
             // '/components_demo': (context) => const ComponentsDemoScreen(),

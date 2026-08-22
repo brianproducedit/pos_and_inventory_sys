@@ -131,13 +131,10 @@ class SyncRepository {
   /// Resolve foreign key mappings for batch sync operations
   /// Maps local IDs to server IDs for products, stores, users in transaction items
   Future<Map<String, dynamic>> resolveBatchSyncData(
-    Map<String, dynamic> item,
+    String tableName,
+    int rowId,
+    Map<String, dynamic> payload,
   ) async {
-    final tableName = item['table_name'] as String;
-    final rowId = item['row_id'] as int;
-    final payloadJson = item['payload_json'] as String;
-    final payload = jsonDecode(payloadJson) as Map<String, dynamic>;
-
     switch (tableName) {
       case 'products':
         return await _resolveProductSyncData(rowId, payload);

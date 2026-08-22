@@ -146,7 +146,7 @@ def test_sales_api_performance_date_range(setup_large_dataset):
     sales_data = []
     base_date = datetime.utcnow() - timedelta(days=30)
     for i in range(500):
-        sale = Sale(
+        sale = Sale(transaction_number="TX-TEST", 
             product_name=f'Product {i % 100}',
             quantity=i % 10 + 1,
             unit_price=float((i % 100) + 1),
@@ -189,7 +189,7 @@ def test_analytics_performance_summary(setup_large_dataset):
 
     sales_data = []
     for i in range(1000):
-        sale = Sale(
+        sale = Sale(transaction_number="TX-TEST", 
             product_name=f'Product {i % 100}',
             quantity=1,
             unit_price=10.0,

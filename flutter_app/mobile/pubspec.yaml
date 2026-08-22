@@ -22,22 +22,21 @@ dependencies:
   drift: ^2.5.0
   drift_sqflite: ^2.0.1
   uuid: ^4.5.2
-  workmanager: ^0.9.0+3
+  workmanager: ^0.10.9
   fl_chart: ^0.66.1
   pdf: ^3.10.4
-  share_plus: ^12.0.1
+  share_plus: 13.2.0
   print_bluetooth_thermal: ^1.1.9
   path_provider: ^2.1.4
   path_provider_android: ^2.2.9
   envied: ^1.3.2
   intl: ^0.19.0
   timezone: ^0.9.0
-  flutter_secure_storage: ^8.0.0
-  connectivity_plus: ^4.0.1
+  flutter_secure_storage: 10.0.0
+  connectivity_plus: ^7.3.1
   flutter_riverpod: ^2.3.7
   crypto: ^3.0.3
   # bluetooth_print: ^4.3.0  # Temporarily disabled due to Flutter embedding compatibility issues
-  blue_thermal_printer: ^1.2.3
 
 dev_dependencies:
   flutter_test:

@@ -51,8 +51,8 @@ def test_sales_list_all_stores():
             usr = User(username='superbrian', password_hash=get_password_hash(test_pw), role=UserRole.superadmin)
             db.add(usr); db.commit(); db.refresh(usr)
 
-        sA = Sale(user_id=usr.id, store_id=s1.id, total_amount=10.0, payment_method='cash', created_at=datetime.utcnow())
-        sB = Sale(user_id=usr.id, store_id=s2.id, total_amount=14.0, payment_method='cash', created_at=datetime.utcnow())
+        sA = Sale(transaction_number="TX-TEST", user_id=usr.id, store_id=s1.id, total_amount=10.0, payment_method='cash', created_at=datetime.utcnow())
+        sB = Sale(transaction_number="TX-TEST", user_id=usr.id, store_id=s2.id, total_amount=14.0, payment_method='cash', created_at=datetime.utcnow())
         db.add_all([sA, sB])
         db.commit()
         # capture ids before closing the session to avoid DetachedInstanceError

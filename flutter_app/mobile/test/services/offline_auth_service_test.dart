@@ -17,11 +17,11 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<void> write({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     required String? value,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async {
@@ -35,10 +35,10 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<String?> read({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async =>
@@ -47,10 +47,10 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<void> delete({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async =>
@@ -59,9 +59,9 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<Map<String, String>> readAll({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async =>
@@ -70,9 +70,9 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<void> deleteAll({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async =>

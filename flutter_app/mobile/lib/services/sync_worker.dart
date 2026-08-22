@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../db/app_database.dart';
 import '../data/remote/api_client.dart';
+import '../config/demo_config.dart';
 import '../models/sync_conflict.dart' as models;
 
 /// Background sync worker - handles pushing and pulling changes
@@ -74,11 +75,22 @@ class SyncWorker {
 
   /// Trigger a sync operation
   Future<void> triggerSync() async {
-    if (_isSyncing) {
-      final lockInfo =
-          _lockAcquiredAt != null ? ' (locked since $_lockAcquiredAt)' : '';
-      debugPrint('SyncWorker: Sync already in progress$lockInfo, skipping');
+    if (DemoConfig.isDemoMode) {
+      debugPrint('🛑 SyncWorker: Sync skipped (Demo Mode active)');
       return;
+    }
+
+    if (_isSyncing) {
+      // Allow override if lock is stuck for more than 5 minutes
+      if (_lockAcquiredAt != null && 
+          DateTime.now().difference(_lockAcquiredAt!).inMinutes > 5) {
+        debugPrint('SyncWorker: Sync lock stuck, overriding');
+      } else {
+        final lockInfo =
+            _lockAcquiredAt != null ? ' (locked since $_lockAcquiredAt)' : '';
+        debugPrint('SyncWorker: Sync already in progress$lockInfo, skipping');
+        return;
+      }
     }
 
     _isSyncing = true;

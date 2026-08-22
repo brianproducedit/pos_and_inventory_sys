@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from typing import Optional, List
 from src.database import get_db
@@ -10,7 +10,7 @@ from src.schemas import SaleCreate, SaleResponse, SaleItemResponse
 
 router = APIRouter()
 
-@router.post("/sales", response_model=SaleResponse)
+@router.post("/sales", response_model=SaleResponse, status_code=status.HTTP_201_CREATED)
 async def create_sale(
     sale_data: SaleCreate,
     request: Request,

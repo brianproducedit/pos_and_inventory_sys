@@ -282,10 +282,10 @@ class FakeFlutterSecureStorage extends FlutterSecureStorage {
   @override
   Future<String?> read({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async {

@@ -7,6 +7,7 @@ import 'package:drift/drift.dart';
 import '../db/app_database.dart';
 import '../data/remote/api_client.dart';
 import 'connectivity_monitor.dart';
+import '../config/demo_config.dart';
 
 /// Result of authentication attempt
 class AuthResult {
@@ -54,6 +55,12 @@ class OfflineAuthService {
 
   /// Main login entry point - decides online vs offline
   Future<AuthResult> login(String username, String password) async {
+    // In Demo Mode, immediately force offline login to avoid network timeouts
+    if (DemoConfig.isDemoMode) {
+      debugPrint('Demo Mode active: Forcing offline login for $username');
+      return await loginOffline(username, password);
+    }
+
     // Safely check connectivity - default to offline if check fails
     bool hasConnectivity;
     try {

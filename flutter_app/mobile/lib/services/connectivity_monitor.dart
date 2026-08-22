@@ -18,7 +18,7 @@ class ConnectivityMonitor {
       StreamController<bool>.broadcast();
 
   bool _hasConnection = false;
-  StreamSubscription<ConnectivityResult>? _subscription;
+  StreamSubscription<List<ConnectivityResult>>? _subscription;
 
   /// Stream that emits connectivity status changes.
   Stream<bool> get onConnectivityChanged => _connectionController.stream;

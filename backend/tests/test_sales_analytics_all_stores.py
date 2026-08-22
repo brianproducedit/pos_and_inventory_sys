@@ -57,7 +57,7 @@ def test_sales_analytics_aggregates_all_stores():
             db.add(usr)
             db.commit()
             db.refresh(usr)
-        sale = Sale(user_id=usr.id, store_id=s1_id, total_amount=20.0, payment_method='cash', created_at=datetime.utcnow())
+        sale = Sale(transaction_number="TX-TEST", user_id=usr.id, store_id=s1_id, total_amount=20.0, payment_method='cash', created_at=datetime.utcnow())
         db.add(sale)
         db.commit()
         db.refresh(sale)

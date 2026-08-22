@@ -57,6 +57,8 @@ import 'ui/admin/sync_errors_screen.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:workmanager/workmanager.dart';
+import 'config/demo_config.dart';
+import 'data/demo/demo_seed.dart';
 import 'sync/sync_background.dart';
 
 void main() {
@@ -93,9 +95,9 @@ void main() {
       debugPrint('TimeService initialization failed: $e');
     }
 
-    // Initialize background work (Android only)
+    // Initialize background work (Android only, skip in demo mode)
     try {
-      if (Platform.isAndroid) {
+      if (Platform.isAndroid && !DemoConfig.isDemoMode) {
         // Use centralized registration helper for testability
         // Use a shorter frequency and debug mode when running in debug builds
         const freq = kDebugMode ? Duration(minutes: 15) : Duration(hours: 6);
@@ -114,7 +116,20 @@ void main() {
       debugPrint('⚠️ ConnectivityMonitor initialization failed: $e');
     }
 
-    runApp(MyApp(dataProtectionService: dataProtectionService));
+    // Create the AppDatabase singleton and seed demo data if enabled
+    final db = AppDatabase();
+    if (DemoConfig.isDemoMode) {
+      try {
+        await DemoSeeder.seed(db);
+      } catch (e) {
+        debugPrint('⚠️ DemoSeeder failed: $e');
+      }
+    }
+
+    runApp(MyApp(
+      dataProtectionService: dataProtectionService,
+      database: db,
+    ));
   }, (error, stack) {
     debugPrint('Uncaught error: $error');
     debugPrint(stack.toString());
@@ -123,11 +138,16 @@ void main() {
 
 class MyApp extends StatelessWidget {
   final DataProtectionService dataProtectionService;
+  final AppDatabase database;
 
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  const MyApp({super.key, required this.dataProtectionService});
+  const MyApp({
+    super.key, 
+    required this.dataProtectionService,
+    required this.database,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -146,12 +166,8 @@ class MyApp extends StatelessWidget {
 
           // Core services & repositories (must be created before providers that depend on them)
           Provider(create: (_) => AuthService()),
-          Provider<AppDatabase>(
-            create: (_) {
-              // PRAGMA configuration (WAL mode, busy timeout) happens automatically during DB opening
-              return AppDatabase();
-            },
-          ),
+          // Database provided from main()
+          Provider<AppDatabase>.value(value: database),
           // API services
           Provider(create: (_) => PostgresApiService()),
           Provider(create: (_) => ApiClient()),
@@ -239,6 +255,29 @@ class MyApp extends StatelessWidget {
                 UserProfileProvider(authProvider: authProvider),
           ),
         ],
+        builder: (context, child) {
+          // Wrap the entire app with a custom builder to support UI-wide features
+          Widget app = Stack(
+            children: [
+              if (child != null) child,
+              // Future: Add global toast overlays or network status indicators here
+            ],
+          );
+          
+          if (DemoConfig.isDemoMode) {
+            app = Directionality(
+              textDirection: TextDirection.ltr,
+              child: Banner(
+                message: 'DEMO',
+                location: BannerLocation.topEnd,
+                color: Colors.orange,
+                child: app,
+              ),
+            );
+          }
+          
+          return app;
+        },
         child: MaterialApp(
           navigatorKey: navigatorKey,
           title: 'POS & Inventory',

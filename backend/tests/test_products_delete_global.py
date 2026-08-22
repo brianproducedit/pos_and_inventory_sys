@@ -49,7 +49,7 @@ def test_superadmin_can_delete_product_any_store_including_dependent_rows():
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.username == 'superbrian').first()
-        sale = Sale(user_id=user.id, store_id=s1, total_amount=1.0, payment_method='cash')
+        sale = Sale(transaction_number="TX-TEST", user_id=user.id, store_id=s1, total_amount=1.0, payment_method='cash')
         db.add(sale)
         db.commit()
         db.refresh(sale)

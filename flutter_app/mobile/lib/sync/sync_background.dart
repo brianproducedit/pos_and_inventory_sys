@@ -136,11 +136,11 @@ Future<bool> syncUsing(dynamic service) async {
 /// Registers a connectivity listener to trigger an immediate sync when the
 /// device regains connectivity (non-none). Returns the [StreamSubscription]
 /// so callers (including tests) can cancel the subscription.
-StreamSubscription<ConnectivityResult> registerConnectivityListener(
+StreamSubscription<List<ConnectivityResult>> registerConnectivityListener(
     Connectivity connectivity,
     {FutureOr<void> Function()? onConnected}) {
   final sub = connectivity.onConnectivityChanged.listen((result) async {
-    if (result != ConnectivityResult.none) {
+    if (!result.contains(ConnectivityResult.none)) {
       try {
         if (onConnected != null) {
           await onConnected();

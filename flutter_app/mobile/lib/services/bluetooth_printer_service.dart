@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:drift/drift.dart' as drift;
-import 'package:blue_thermal_printer/blue_thermal_printer.dart';
+import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import '../models/receipt_model.dart';
 import '../db/app_database.dart';
 
@@ -21,14 +21,12 @@ class BluetoothPrinter {
   final String address; // MAC address
   final String? modelName;
   final bool isConnected;
-  final BluetoothDevice? device; // Reference to the actual Bluetooth device
 
   BluetoothPrinter({
     required this.name,
     required this.address,
     this.modelName,
     this.isConnected = false,
-    this.device,
   });
 
   @override
@@ -90,14 +88,9 @@ enum PrintJobStatus {
 
 /// Service for managing Bluetooth thermal printer operations
 ///
-/// Note: This is a framework implementation. In production, you would integrate
-/// with actual Bluetooth printer packages like:
-/// - blue_thermal_printer
-/// - bluetooth_print
-/// - esc_pos_bluetooth
+/// Uses print_bluetooth_thermal for Bluetooth communication with ESC/POS printers.
 class BluetoothPrinterService extends ChangeNotifier {
   final AppDatabase db;
-  final BlueThermalPrinter _bluetoothPrinter = BlueThermalPrinter.instance;
 
   // Printer state
   BluetoothPrinter? _connectedPrinter;
@@ -126,17 +119,16 @@ class BluetoothPrinterService extends ChangeNotifier {
     debugPrint('BluetoothPrinterService: Scanning for printers...');
 
     try {
-      // Get bonded devices (paired Bluetooth devices)
-      final List<BluetoothDevice> devices =
-          await _bluetoothPrinter.getBondedDevices();
+      // Get paired Bluetooth devices
+      final List<BluetoothInfo> devices =
+          await PrintBluetoothThermal.pairedBluetooths;
 
       // Convert to our BluetoothPrinter model
       _availablePrinters = devices.map((device) {
         return BluetoothPrinter(
-          name: device.name ?? 'Unknown Device',
-          address: device.address ?? '',
-          modelName: device.name, // Use name as model for now
-          device: device, // Store the device reference
+          name: device.name,
+          address: device.macAdress,
+          modelName: device.name,
         );
       }).toList();
 
@@ -158,12 +150,13 @@ class BluetoothPrinterService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      if (printer.device == null) {
-        throw Exception('No Bluetooth device reference available');
-      }
+      // Connect using MAC address
+      final bool result =
+          await PrintBluetoothThermal.connect(macPrinterAddress: printer.address);
 
-      // Connect to the device
-      await _bluetoothPrinter.connect(printer.device!);
+      if (!result) {
+        throw Exception('Connection returned false');
+      }
 
       _connectedPrinter = printer;
       _connectionStatus = PrinterConnectionStatus.connected;
@@ -191,7 +184,7 @@ class BluetoothPrinterService extends ChangeNotifier {
 
     try {
       // Disconnect from the device
-      await _bluetoothPrinter.disconnect();
+      await PrintBluetoothThermal.disconnect;
 
       _connectedPrinter = null;
       _connectionStatus = PrinterConnectionStatus.disconnected;
@@ -220,8 +213,13 @@ class BluetoothPrinterService extends ChangeNotifier {
       // Generate ESC/POS commands
       final commands = receipt.toEscPosCommands();
 
-      // Send commands to printer
-      await _bluetoothPrinter.writeBytes(Uint8List.fromList(commands));
+      // Send raw bytes to printer
+      final bool result =
+          await PrintBluetoothThermal.writeBytes(Uint8List.fromList(commands));
+
+      if (!result) {
+        throw Exception('writeBytes returned false');
+      }
 
       debugPrint('BluetoothPrinterService: Receipt printed successfully');
       return true;

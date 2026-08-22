@@ -11,7 +11,7 @@ import json
 
 router = APIRouter(prefix="/api/stores", tags=["stores"])
 
-@router.post("", response_model=StoreResponse)
+@router.post("", response_model=StoreResponse, status_code=status.HTTP_201_CREATED)
 async def create_store(
     store_data: StoreCreate,
     current_user: User = Depends(get_current_active_user),

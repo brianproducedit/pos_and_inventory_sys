@@ -5,18 +5,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile/sync/sync_background.dart';
 
 class FakeConnectivity implements Connectivity {
-  final StreamController<ConnectivityResult> _controller =
-      StreamController<ConnectivityResult>.broadcast();
+  final StreamController<List<ConnectivityResult>> _controller =
+      StreamController<List<ConnectivityResult>>.broadcast();
 
   @override
-  Future<ConnectivityResult> checkConnectivity() async =>
-      ConnectivityResult.none;
+  Future<List<ConnectivityResult>> checkConnectivity() async =>
+      [ConnectivityResult.none];
 
   @override
-  Stream<ConnectivityResult> get onConnectivityChanged => _controller.stream;
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => _controller.stream;
 
   // Helper to push events
-  void push(ConnectivityResult r) => _controller.add(r);
+  void push(List<ConnectivityResult> r) => _controller.add(r);
 
   // Unused/unsupported members can be left unimplemented for tests
 }
@@ -34,7 +34,7 @@ void main() {
     });
 
     // Simulate connectivity regained
-    fake.push(ConnectivityResult.wifi);
+    fake.push([ConnectivityResult.wifi]);
 
     // Give event loop a moment
     await Future.delayed(const Duration(milliseconds: 50));

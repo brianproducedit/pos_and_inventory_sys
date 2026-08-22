@@ -142,8 +142,8 @@ class AuthService {
             }
 
             // Insert or replace full user info locally for offline access using Drift
-            await _db
-                .into(_db.users)
+            await _db!
+                .into(_db!.users)
                 .insertOnConflictUpdate(
                   UsersCompanion.insert(
                     serverId: Value(id),

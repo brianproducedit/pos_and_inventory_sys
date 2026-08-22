@@ -9,14 +9,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:mobile/main.dart';
+import 'package:mobile/db/app_database.dart';
 import 'package:mobile/services/data_protection_service.dart';
 
 void main() {
   testWidgets('App builds and shows home title', (WidgetTester tester) async {
     // Build our app and trigger a frame.
     final dataProtectionService = DataProtectionService();
-    await tester
-        .pumpWidget(MyApp(dataProtectionService: dataProtectionService));
+    final db = AppDatabase();
+    await tester.pumpWidget(MyApp(
+      dataProtectionService: dataProtectionService,
+      database: db,
+    ));
 
     // Verify that MaterialApp has the correct title
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));

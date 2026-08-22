@@ -4706,7 +4706,7 @@ final class $$StoresTableReferences
   static MultiTypedResultKey<$UsersTable, List<User>> _usersRefsTable(
           _$AppDatabase db) =>
       MultiTypedResultKey.fromTable(db.users,
-          aliasName: $_aliasNameGenerator(db.stores.id, db.users.storeId));
+          aliasName: 'stores__id__users__store_id');
 
   $$UsersTableProcessedTableManager get usersRefs {
     final manager = $$UsersTableTableManager($_db, $_db.users)
@@ -4720,7 +4720,7 @@ final class $$StoresTableReferences
   static MultiTypedResultKey<$ProductsTable, List<Product>> _productsRefsTable(
           _$AppDatabase db) =>
       MultiTypedResultKey.fromTable(db.products,
-          aliasName: $_aliasNameGenerator(db.stores.id, db.products.storeId));
+          aliasName: 'stores__id__products__store_id');
 
   $$ProductsTableProcessedTableManager get productsRefs {
     final manager = $$ProductsTableTableManager($_db, $_db.products)
@@ -4734,7 +4734,7 @@ final class $$StoresTableReferences
   static MultiTypedResultKey<$SalesTable, List<Sale>> _salesRefsTable(
           _$AppDatabase db) =>
       MultiTypedResultKey.fromTable(db.sales,
-          aliasName: $_aliasNameGenerator(db.stores.id, db.sales.storeId));
+          aliasName: 'stores__id__sales__store_id');
 
   $$SalesTableProcessedTableManager get salesRefs {
     final manager = $$SalesTableTableManager($_db, $_db.sales)
@@ -5173,8 +5173,8 @@ final class $$UsersTableReferences
     extends BaseReferences<_$AppDatabase, $UsersTable, User> {
   $$UsersTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $StoresTable _storeIdTable(_$AppDatabase db) => db.stores
-      .createAlias($_aliasNameGenerator(db.users.storeId, db.stores.id));
+  static $StoresTable _storeIdTable(_$AppDatabase db) =>
+      db.stores.createAlias('users__store_id__stores__id');
 
   $$StoresTableProcessedTableManager? get storeId {
     final $_column = $_itemColumn<int>('store_id');
@@ -5190,7 +5190,7 @@ final class $$UsersTableReferences
   static MultiTypedResultKey<$SalesTable, List<Sale>> _salesRefsTable(
           _$AppDatabase db) =>
       MultiTypedResultKey.fromTable(db.sales,
-          aliasName: $_aliasNameGenerator(db.users.id, db.sales.userId));
+          aliasName: 'users__id__sales__user_id');
 
   $$SalesTableProcessedTableManager get salesRefs {
     final manager = $$SalesTableTableManager($_db, $_db.sales)
@@ -5204,8 +5204,7 @@ final class $$UsersTableReferences
   static MultiTypedResultKey<$InventoryLogsTable, List<InventoryLog>>
       _inventoryLogsRefsTable(_$AppDatabase db) =>
           MultiTypedResultKey.fromTable(db.inventoryLogs,
-              aliasName:
-                  $_aliasNameGenerator(db.users.id, db.inventoryLogs.userId));
+              aliasName: 'users__id__inventory_logs__user_id');
 
   $$InventoryLogsTableProcessedTableManager get inventoryLogsRefs {
     final manager = $$InventoryLogsTableTableManager($_db, $_db.inventoryLogs)
@@ -5720,8 +5719,8 @@ final class $$ProductsTableReferences
     extends BaseReferences<_$AppDatabase, $ProductsTable, Product> {
   $$ProductsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $StoresTable _storeIdTable(_$AppDatabase db) => db.stores
-      .createAlias($_aliasNameGenerator(db.products.storeId, db.stores.id));
+  static $StoresTable _storeIdTable(_$AppDatabase db) =>
+      db.stores.createAlias('products__store_id__stores__id');
 
   $$StoresTableProcessedTableManager get storeId {
     final $_column = $_itemColumn<int>('store_id')!;
@@ -5737,8 +5736,7 @@ final class $$ProductsTableReferences
   static MultiTypedResultKey<$SaleItemsTable, List<SaleItem>>
       _saleItemsRefsTable(_$AppDatabase db) =>
           MultiTypedResultKey.fromTable(db.saleItems,
-              aliasName:
-                  $_aliasNameGenerator(db.products.id, db.saleItems.productId));
+              aliasName: 'products__id__sale_items__product_id');
 
   $$SaleItemsTableProcessedTableManager get saleItemsRefs {
     final manager = $$SaleItemsTableTableManager($_db, $_db.saleItems)
@@ -5752,8 +5750,7 @@ final class $$ProductsTableReferences
   static MultiTypedResultKey<$InventoryLogsTable, List<InventoryLog>>
       _inventoryLogsRefsTable(_$AppDatabase db) =>
           MultiTypedResultKey.fromTable(db.inventoryLogs,
-              aliasName: $_aliasNameGenerator(
-                  db.products.id, db.inventoryLogs.productId));
+              aliasName: 'products__id__inventory_logs__product_id');
 
   $$InventoryLogsTableProcessedTableManager get inventoryLogsRefs {
     final manager = $$InventoryLogsTableTableManager($_db, $_db.inventoryLogs)
@@ -6259,7 +6256,7 @@ final class $$SalesTableReferences
   $$SalesTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static $UsersTable _userIdTable(_$AppDatabase db) =>
-      db.users.createAlias($_aliasNameGenerator(db.sales.userId, db.users.id));
+      db.users.createAlias('sales__user_id__users__id');
 
   $$UsersTableProcessedTableManager get userId {
     final $_column = $_itemColumn<int>('user_id')!;
@@ -6272,8 +6269,8 @@ final class $$SalesTableReferences
         manager.$state.copyWith(prefetchedData: [item]));
   }
 
-  static $StoresTable _storeIdTable(_$AppDatabase db) => db.stores
-      .createAlias($_aliasNameGenerator(db.sales.storeId, db.stores.id));
+  static $StoresTable _storeIdTable(_$AppDatabase db) =>
+      db.stores.createAlias('sales__store_id__stores__id');
 
   $$StoresTableProcessedTableManager get storeId {
     final $_column = $_itemColumn<int>('store_id')!;
@@ -6287,9 +6284,9 @@ final class $$SalesTableReferences
   }
 
   static MultiTypedResultKey<$SaleItemsTable, List<SaleItem>>
-      _saleItemsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
-          db.saleItems,
-          aliasName: $_aliasNameGenerator(db.sales.id, db.saleItems.saleId));
+      _saleItemsRefsTable(_$AppDatabase db) =>
+          MultiTypedResultKey.fromTable(db.saleItems,
+              aliasName: 'sales__id__sale_items__sale_id');
 
   $$SaleItemsTableProcessedTableManager get saleItemsRefs {
     final manager = $$SaleItemsTableTableManager($_db, $_db.saleItems)
@@ -6784,8 +6781,8 @@ final class $$SaleItemsTableReferences
     extends BaseReferences<_$AppDatabase, $SaleItemsTable, SaleItem> {
   $$SaleItemsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
-  static $SalesTable _saleIdTable(_$AppDatabase db) => db.sales
-      .createAlias($_aliasNameGenerator(db.saleItems.saleId, db.sales.id));
+  static $SalesTable _saleIdTable(_$AppDatabase db) =>
+      db.sales.createAlias('sale_items__sale_id__sales__id');
 
   $$SalesTableProcessedTableManager get saleId {
     final $_column = $_itemColumn<int>('sale_id')!;
@@ -6799,8 +6796,7 @@ final class $$SaleItemsTableReferences
   }
 
   static $ProductsTable _productIdTable(_$AppDatabase db) =>
-      db.products.createAlias(
-          $_aliasNameGenerator(db.saleItems.productId, db.products.id));
+      db.products.createAlias('sale_items__product_id__products__id');
 
   $$ProductsTableProcessedTableManager get productId {
     final $_column = $_itemColumn<int>('product_id')!;
@@ -7193,8 +7189,7 @@ final class $$InventoryLogsTableReferences
       super.$_db, super.$_table, super.$_typedResult);
 
   static $ProductsTable _productIdTable(_$AppDatabase db) =>
-      db.products.createAlias(
-          $_aliasNameGenerator(db.inventoryLogs.productId, db.products.id));
+      db.products.createAlias('inventory_logs__product_id__products__id');
 
   $$ProductsTableProcessedTableManager get productId {
     final $_column = $_itemColumn<int>('product_id')!;
@@ -7207,8 +7202,8 @@ final class $$InventoryLogsTableReferences
         manager.$state.copyWith(prefetchedData: [item]));
   }
 
-  static $UsersTable _userIdTable(_$AppDatabase db) => db.users
-      .createAlias($_aliasNameGenerator(db.inventoryLogs.userId, db.users.id));
+  static $UsersTable _userIdTable(_$AppDatabase db) =>
+      db.users.createAlias('inventory_logs__user_id__users__id');
 
   $$UsersTableProcessedTableManager get userId {
     final $_column = $_itemColumn<int>('user_id')!;

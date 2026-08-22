@@ -27,7 +27,7 @@ def test_hard_delete_store_removes_all():
         db.refresh(user)
 
         # Create a sale and sale item
-        sale = Sale(user_id=user.id, store_id=store.id, total_amount=10.0)
+        sale = Sale(transaction_number="TX-TEST", user_id=user.id, store_id=store.id, total_amount=10.0)
         db.add(sale)
         db.commit()
         db.refresh(sale)

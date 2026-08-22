@@ -13,11 +13,11 @@ import '../../test_helpers.dart';
 
 class _FakeConnectivity implements Connectivity {
   @override
-  Future<ConnectivityResult> checkConnectivity() async =>
-      ConnectivityResult.wifi;
+  Future<List<ConnectivityResult>> checkConnectivity() async =>
+      [ConnectivityResult.wifi];
 
   @override
-  Stream<ConnectivityResult> get onConnectivityChanged => const Stream.empty();
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => const Stream.empty();
 }
 
 late AppDatabase testDb;

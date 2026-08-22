@@ -13,11 +13,11 @@ import '../../test_utils/fake_http_client.dart';
 
 class _FakeConnectivity implements Connectivity {
   @override
-  Future<ConnectivityResult> checkConnectivity() async =>
-      ConnectivityResult.wifi;
+  Future<List<ConnectivityResult>> checkConnectivity() async =>
+      [ConnectivityResult.wifi];
 
   @override
-  Stream<ConnectivityResult> get onConnectivityChanged => const Stream.empty();
+  Stream<List<ConnectivityResult>> get onConnectivityChanged => const Stream.empty();
 }
 
 class TestSecureStorage extends FlutterSecureStorage {
@@ -26,11 +26,11 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<void> write({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     required String? value,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async {
@@ -44,10 +44,10 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<String?> read({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async =>
@@ -56,10 +56,10 @@ class TestSecureStorage extends FlutterSecureStorage {
   @override
   Future<void> delete({
     AndroidOptions? aOptions,
-    IOSOptions? iOptions,
+    AppleOptions? iOptions,
     required String key,
     LinuxOptions? lOptions,
-    MacOsOptions? mOptions,
+    AppleOptions? mOptions,
     WindowsOptions? wOptions,
     WebOptions? webOptions,
   }) async {

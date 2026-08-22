@@ -12,7 +12,7 @@ import 'store_settings_screen.dart';
 import 'user_settings_screen.dart';
 import 'system_settings_screen.dart';
 import 'user_profile_screen.dart';
-import '../ui/sync_demo.dart';
+
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -119,17 +119,7 @@ class SettingsScreen extends StatelessWidget {
               Icons.error_outline,
               () => Navigator.pushNamed(context, '/admin/sync-errors'),
             ),
-            const SizedBox(height: 16),
-            _buildSettingsCard(
-              context,
-              'Sync Demo',
-              'Manual sync and conflict resolution',
-              Icons.sync,
-              () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SyncDemoScreen()),
-              ),
-            ),
+
           ],
         ],
       ),

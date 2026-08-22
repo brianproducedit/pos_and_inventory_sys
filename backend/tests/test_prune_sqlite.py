@@ -30,7 +30,7 @@ def run_prune_script(db_path: str):
     env['DATABASE_URL'] = f'sqlite:///{db_path}'
     # Execute the prune script via subprocess; resolve path relative to repo root
     repo_root = Path(__file__).resolve().parents[2]
-    script_path = repo_root / 'backend' / 'scripts' / 'prune_sqlite.py'
+    script_path = repo_root / 'backend' / 'scripts' / 'dev' / 'prune_sqlite.py'
     # Ensure that the backend package is importable by setting PYTHONPATH to backend
     env['PYTHONPATH'] = str(repo_root / 'backend')
     subprocess.check_call(["python", str(script_path)], env=env)

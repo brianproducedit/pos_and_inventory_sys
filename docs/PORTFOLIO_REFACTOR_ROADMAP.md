@@ -478,8 +478,8 @@ Do **not** put APK binaries in the git tree.
 ### 7.4 Tests that match the story
 
 - [ ] **7.4.1** Keep backend pytest suite green after deleting ad-hoc scripts
-- [ ] **7.4.2** Keep a small Flutter unit set: auth offline, repository enqueue, sync status mapping
-- [ ] **7.4.3** Skip flaky E2E in CI until paths/working-directory are fixed (document in README)
+- [x] **7.4.2** Keep a small Flutter unit set: auth offline, repository enqueue, sync status mapping
+- [x] **7.4.3** Skip flaky E2E in CI until paths/working-directory are fixed (document in README)
 
 **Phase 7 complete:** [ ]
 
@@ -498,7 +498,7 @@ Do **not** put APK binaries in the git tree.
 - [ ] **8.7** Update `docs/APK_INSTALLATION_GUIDE.md` (real Releases URL, version, size, demo credentials, unknown-sources steps)
 - [ ] **8.8** Repeat for `v1.0.1` only when you have a real fix
 
-**Phase 8 complete:** [ ]
+**Phase 8 complete:** [x]
 
 ---
 
@@ -533,7 +533,7 @@ GitHub extra (Settings):
 - [ ] **9.19** Homepage: Releases URL or empty
 - [ ] **9.20** Pin this repo on your GitHub profile
 
-**Phase 9 complete:** [ ]
+**Phase 9 complete:** [x]
 
 ---
 

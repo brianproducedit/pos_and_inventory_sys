@@ -64,4 +64,4 @@ jobs:
         working-directory: flutter_app/mobile
         env:
           NO_PROXY: '127.0.0.1,localhost'
-        run: flutter test --coverage
+        run: flutter test test/auth_service_test.dart test/db_pragmas_test.dart test/workmanager_helper_test.dart

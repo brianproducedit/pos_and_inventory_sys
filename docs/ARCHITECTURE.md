@@ -32,6 +32,7 @@ graph TD
 ## Offline-First Approach
 
 The mobile app relies **entirely** on the local SQLite database (managed via Drift) for all reads and writes. 
+*(Note: Many components are suffixed with `_v2` (e.g., `product_repository_v2.dart`). This "V2" architecture is the canonical, production architecture. The suffixes remain to distinguish offline-first components from legacy cloud-only prototypes.)*
 
 ### Roles & Responsibilities
 - **Cashier**: Can process sales, view inventory, and access the POS. Needs no internet connection once logged in.

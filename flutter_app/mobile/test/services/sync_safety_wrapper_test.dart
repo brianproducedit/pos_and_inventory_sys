@@ -26,6 +26,7 @@ void main() {
   late SyncSafetyWrapper syncSafety;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     PathProviderPlatform.instance = MockPathProviderPlatform();
     dataProtection = DataProtectionService();
     await dataProtection.initialize();

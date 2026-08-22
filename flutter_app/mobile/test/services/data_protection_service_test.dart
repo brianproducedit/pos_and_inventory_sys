@@ -26,6 +26,7 @@ void main() {
   late DataProtectionService service;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     // Setup mock path provider
     PathProviderPlatform.instance = MockPathProviderPlatform();
 

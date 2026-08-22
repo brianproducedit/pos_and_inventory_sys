@@ -27,7 +27,7 @@ class UserRepository {
           // Retry the operation
           return await operation();
         } catch (retryError) {
-          debugPrint('❌ Database retry failed: $retryError');
+          debugPrint(' Database retry failed: $retryError');
           rethrow;
         }
       } else {
@@ -46,7 +46,7 @@ class UserRepository {
     int? storeId,
   }) async {
     return await _withDatabaseRetry(() async {
-      debugPrint('🔵 UserRepository.create() called:');
+      debugPrint(' UserRepository.create() called:');
       debugPrint('   username: $username');
       debugPrint('   fullName: $fullName');
       debugPrint('   role: ${role.name}');
@@ -56,7 +56,7 @@ class UserRepository {
       debugPrint('   clientId: $clientId');
 
       // 1. Insert locally (immediate)
-      debugPrint('📝 Inserting user into local database...');
+      debugPrint(' Inserting user into local database...');
       debugPrint(
           '   ⚠️ storeId for FK: $storeId (must be LOCAL store id, not server_id!)');
 
@@ -73,9 +73,9 @@ class UserRepository {
               syncStatus: const Value(SyncStatus.pending),
               isLocalOnly: const Value(true), // Ghost user until synced
             ));
-        debugPrint('✅ User inserted locally with id: $id');
+        debugPrint('User inserted locally with id: $id');
       } catch (e, stackTrace) {
-        debugPrint('❌ FAILED to insert user into local database!');
+        debugPrint(' FAILED to insert user into local database!');
         debugPrint('   Error: $e');
         debugPrint('   This is likely a FOREIGN KEY constraint failure.');
         debugPrint(
@@ -85,7 +85,7 @@ class UserRepository {
       }
 
       // 2. Enqueue for sync (background)
-      debugPrint('📤 Enqueueing user for sync...');
+      debugPrint(' Enqueueing user for sync...');
 
       // Resolve store ID to server ID if provided
       int? serverStoreId;
@@ -128,7 +128,7 @@ class UserRepository {
         debugPrint(
             '✅ User enqueued for sync: $username (clientId: $clientId, entityId: $id)');
       } catch (e, stackTrace) {
-        debugPrint('❌ CRITICAL ERROR enqueueing user for sync: $e');
+        debugPrint(' CRITICAL ERROR enqueueing user for sync: $e');
         debugPrint('Stack trace: $stackTrace');
         debugPrint(
             '⚠️ This might be a database schema issue. Try uninstalling and reinstalling the app.');
@@ -137,7 +137,7 @@ class UserRepository {
       }
 
       // 3. Return immediately - UI never waits for network
-      debugPrint('🔄 Fetching created user from database...');
+      debugPrint(' Fetching created user from database...');
       final createdUser = await getById(id);
       debugPrint(
           '✅ User created successfully: ${createdUser.username} (id: ${createdUser.id})');

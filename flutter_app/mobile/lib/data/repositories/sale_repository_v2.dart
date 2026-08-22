@@ -26,7 +26,7 @@ class SaleRepository extends BaseRepository<Sale> {
           // Retry the operation
           return await operation();
         } catch (retryError) {
-          debugPrint('❌ Database retry failed: $retryError');
+          debugPrint(' Database retry failed: $retryError');
           rethrow;
         }
       } else {

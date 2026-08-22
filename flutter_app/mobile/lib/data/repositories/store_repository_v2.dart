@@ -25,7 +25,7 @@ class StoreRepository extends BaseRepository<Store> {
           // Retry the operation
           return await operation();
         } catch (retryError) {
-          debugPrint('❌ Database retry failed: $retryError');
+          debugPrint(' Database retry failed: $retryError');
           rethrow;
         }
       } else {
@@ -119,7 +119,7 @@ class StoreRepository extends BaseRepository<Store> {
       final store = await getById(id);
       if (store == null) return;
 
-      debugPrint('📴 Deactivating store: id=$id, serverId=${store.serverId}');
+      debugPrint(' Deactivating store: id=$id, serverId=${store.serverId}');
 
       await (db.update(db.stores)..where((s) => s.id.equals(id))).write(
         StoresCompanion(
@@ -160,7 +160,7 @@ class StoreRepository extends BaseRepository<Store> {
     return await _withDatabaseRetry(() async {
       final store = await getById(id);
       if (store == null) {
-        debugPrint('⚠️ Store not found for hard delete: id=$id');
+        debugPrint('️ Store not found for hard delete: id=$id');
         return;
       }
 
@@ -182,7 +182,7 @@ class StoreRepository extends BaseRepository<Store> {
 
       // Now delete locally - this removes the store immediately from the local DB
       await (db.delete(db.stores)..where((s) => s.id.equals(id))).go();
-      debugPrint('✅ Store hard deleted locally: id=$id');
+      debugPrint(' Store hard deleted locally: id=$id');
     });
   }
 

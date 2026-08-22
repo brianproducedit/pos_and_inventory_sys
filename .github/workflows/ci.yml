@@ -32,18 +32,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install pytest "httpx<0.28" pytest-asyncio
+      - name: Run alembic migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pos_dev
+        run: |
+          cd backend
+          alembic upgrade head
       - name: Run backend tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pos_dev
         run: |
           cd backend
           pytest -q
-      - name: Run alembic migrations (dry-run)
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pos_dev
-        run: |
-          cd backend
-          alembic upgrade head
 
   mobile:
     name: Flutter analyze & unit tests

@@ -1,0 +1,63 @@
+name: Release APK
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build & upload release APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.1'
+          channel: 'stable'
+
+      - name: Install dependencies
+        working-directory: flutter_app/mobile
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: flutter_app/mobile
+        run: flutter build apk --release --dart-define=DEMO_MODE=true
+
+      - name: Upload APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: flutter_app/mobile/build/app/outputs/flutter-apk/app-release.apk
+          body: |
+            ## POS & Inventory System ${{ github.ref_name }}
+
+            ### Demo Credentials
+            | Role | Username | Password |
+            |------|----------|----------|
+            | Cashier | `demo` | `demo123` |
+            | Admin | `admin` | `demo123` |
+            | Superadmin | `superadmin` | `demo123` |
+
+            ### Installation
+            1. Download `app-release.apk` below
+            2. Enable "Install from unknown sources" on your Android device
+            3. Open the APK and install
+            4. **No internet required** — the app runs fully offline with seeded demo data
+
+            ### Optional: Local backend sync
+            ```bash
+            docker compose up --build
+            # App Settings → Connect to server → http://10.0.2.2:8000
+            ```
+          draft: false
+          prerelease: false

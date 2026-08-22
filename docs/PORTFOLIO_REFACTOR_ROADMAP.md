@@ -413,26 +413,26 @@ Create `lib/data/demo/demo_seed.dart` (name flexible). Idempotent: only seed if 
 
 ### 6.1 Delete duplicate / broken workflows
 
-- [ ] **6.1.1** Delete `.github/workflows/flutter-ci.yml`
-- [ ] **6.1.2** Delete `.github/workflows/flutter_ci.yml`
-- [ ] **6.1.3** Delete `.github/workflows/flutter-unit-tests.yml`
-- [ ] **6.1.4** Delete `.github/workflows/integration.yml` (or merge a **working** `working-directory: flutter_app/mobile` job into `ci.yml` later)
-- [ ] **6.1.5** Delete `.github/workflows/migrations-idempotency.yml` **or** fold “alembic upgrade twice” into `ci.yml` as one step
-- [ ] **6.1.6** Delete `.github/workflows/pr-ci-failure-reporter.yml`
+- [x] **6.1.1** Delete `.github/workflows/flutter-ci.yml`
+- [x] **6.1.2** Delete `.github/workflows/flutter_ci.yml`
+- [x] **6.1.3** Delete `.github/workflows/flutter-unit-tests.yml`
+- [x] **6.1.4** Delete `.github/workflows/integration.yml` (or merge a **working** `working-directory: flutter_app/mobile` job into `ci.yml` later)
+- [x] **6.1.5** Delete `.github/workflows/migrations-idempotency.yml` **or** fold “alembic upgrade twice” into `ci.yml` as one step
+- [x] **6.1.6** Delete `.github/workflows/pr-ci-failure-reporter.yml`
 
 ### 6.2 Single `ci.yml`
 
-- [ ] **6.2.1** Triggers: `push` and `pull_request` on `main`
-- [ ] **6.2.2** Job `backend`: Postgres service, `pip install`, `pytest`, `alembic upgrade head`
-- [ ] **6.2.3** Job `mobile`: `working-directory: flutter_app/mobile`, `flutter pub get`, `dart run build_runner build` if `env.g.dart` is generated in CI, `flutter analyze`, `flutter test`
-- [ ] **6.2.4** Pin a Flutter version (not floating `stable` without a version) so CI does not randomly break
+- [x] **6.2.1** Triggers: `push` and `pull_request` on `main`
+- [x] **6.2.2** Job `backend`: Postgres service, `pip install`, `pytest`, `alembic upgrade head`
+- [x] **6.2.3** Job `mobile`: `working-directory: flutter_app/mobile`, `flutter pub get`, `dart run build_runner build` if `env.g.dart` is generated in CI, `flutter analyze`, `flutter test`
+- [x] **6.2.4** Pin a Flutter version (not floating `stable` without a version) so CI does not randomly break
 - [ ] **6.2.5** Push a trivial commit and confirm both jobs pass on GitHub
 
 ### 6.3 Release workflow (APK → GitHub Releases)
 
 Do **not** put APK binaries in the git tree.
 
-- [ ] **6.3.1** Add `.github/workflows/release.yml`  
+- [x] **6.3.1** Add `.github/workflows/release.yml`  
   - Trigger: `push` of tags `v*.*.*` (and optionally `workflow_dispatch`)  
   - Checkout, setup Java + Flutter  
   - `flutter build apk --release --dart-define=DEMO_MODE=true` in `flutter_app/mobile`  

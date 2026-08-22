@@ -257,7 +257,7 @@ class AppDatabase extends _$AppDatabase {
   }
 
   @override
-  int get schemaVersion => 3; // Added client_seq to SyncQueue
+  int get schemaVersion => 4; // Added transaction_number to Sales
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -425,6 +425,43 @@ class AppDatabase extends _$AppDatabase {
                 }
               } else {
                 debugPrint('✅ sync_queue already has client_seq column');
+              }
+            }
+          }
+
+          if (from == 3 && to >= 4) {
+            // Add transaction_number column to sales table
+            final salesExists = await tableExists('sales');
+            debugPrint('🔄 Migration 3->4: sales exists = $salesExists');
+
+            if (salesExists) {
+              final hasTransactionNumber =
+                  await columnExists('sales', 'transaction_number');
+              debugPrint(
+                  '🔄 Migration 3->4: transaction_number exists = $hasTransactionNumber');
+
+              if (!hasTransactionNumber) {
+                debugPrint(
+                    '📦 Adding transaction_number column to sales table...');
+                try {
+                  // Add the column as nullable first
+                  await customStatement(
+                    'ALTER TABLE sales ADD COLUMN transaction_number TEXT',
+                  );
+
+                  // Backfill existing sales with generated transaction numbers
+                  await customStatement('''
+                    UPDATE sales
+                    SET transaction_number = 'TXN' || strftime('%Y%m%d', created_at) || substr('00000' || (id % 100000), -5)
+                    WHERE transaction_number IS NULL
+                  ''');
+
+                  debugPrint('✅ Added transaction_number column to sales table');
+                } catch (e) {
+                  debugPrint('⚠️ Error adding transaction_number column: $e');
+                }
+              } else {
+                debugPrint('✅ sales table already has transaction_number column');
               }
             }
           }

@@ -1,10 +1,13 @@
 import 'package:http/http.dart' as http;
+
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
+
 import '../config/env.dart';
 import '../db/app_database.dart';
 
@@ -30,8 +33,11 @@ class AuthService {
   }
 
   /// Attempt offline login using stored credentials and Drift DB
-  Future<bool> offlineLogin(AppDatabase db,
-      {String? username, String? password}) async {
+  Future<bool> offlineLogin(
+    AppDatabase db, {
+    String? username,
+    String? password,
+  }) async {
     // Use provided credentials or fall back to stored ones
     final storedUsername =
         username ?? await _secureStorage.read(key: 'username');
@@ -40,15 +46,17 @@ class AuthService {
 
     if (storedUsername == null || storedPassword == null) return false;
 
-    final user = await (db.select(db.users)
-          ..where((u) => u.username.equals(storedUsername))
-          ..limit(1))
-        .getSingleOrNull();
+    final user =
+        await (db.select(db.users)
+              ..where((u) => u.username.equals(storedUsername))
+              ..limit(1))
+            .getSingleOrNull();
 
     if (user != null) {
       // Check if we have a stored password hash for offline validation
-      final storedHash =
-          await _secureStorage.read(key: 'password_hash_$storedUsername');
+      final storedHash = await _secureStorage.read(
+        key: 'password_hash_$storedUsername',
+      );
       if (storedHash != null) {
         final inputHash = _hashPassword(storedPassword);
         if (inputHash != storedHash) {
@@ -68,13 +76,13 @@ class AuthService {
   final FlutterSecureStorage _secureStorage;
   final AppDatabase? _db;
 
-  AuthService(
-      [http.Client? client,
-      FlutterSecureStorage? secureStorage,
-      AppDatabase? db])
-      : _client = client ?? http.Client(),
-        _secureStorage = secureStorage ?? const FlutterSecureStorage(),
-        _db = db;
+  AuthService([
+    http.Client? client,
+    FlutterSecureStorage? secureStorage,
+    AppDatabase? db,
+  ]) : _client = client ?? http.Client(),
+       _secureStorage = secureStorage ?? const FlutterSecureStorage(),
+       _db = db;
 
   /// Login: call remote token endpoint, store token securely, and persist basic user info in local DB.
   Future<Map<String, dynamic>> login(String username, String password) async {
@@ -100,7 +108,9 @@ class AuthService {
         await _secureStorage.write(key: 'password', value: password);
         // Store hashed password for offline validation
         await _secureStorage.write(
-            key: 'password_hash_$username', value: _hashPassword(password));
+          key: 'password_hash_$username',
+          value: _hashPassword(password),
+        );
         // Maintain backward compatibility with code that still reads from SharedPreferences
         try {
           final prefs = await SharedPreferences.getInstance();
@@ -132,12 +142,15 @@ class AuthService {
             }
 
             // Insert or replace full user info locally for offline access using Drift
-            await _db!.into(_db!.users).insertOnConflictUpdate(
+            await _db
+                .into(_db.users)
+                .insertOnConflictUpdate(
                   UsersCompanion.insert(
                     serverId: Value(id),
                     username: uname,
-                    passwordHash:
-                        _hashPassword(password), // Store hashed password
+                    passwordHash: _hashPassword(
+                      password,
+                    ), // Store hashed password
                     fullName: Value(fullName),
                     role: role,
                     storeId: Value(storeId),
@@ -196,9 +209,7 @@ class AuthService {
 
     final response = await _client.get(
       Uri.parse('$baseUrl/api/users/me'),
-      headers: {
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Authorization': 'Bearer $token'},
     );
 
     if (response.statusCode == 200) {
@@ -215,7 +226,8 @@ class AuthService {
         }
       } catch (_) {}
       debugPrint(
-          'getUserInfo failed with status ${response.statusCode}: ${response.body}');
+        'getUserInfo failed with status ${response.statusCode}: ${response.body}',
+      );
       throw AuthException(response.statusCode, 'Failed to get user info');
     }
   }

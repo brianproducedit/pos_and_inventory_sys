@@ -8,6 +8,7 @@ import 'package:mobile/screens/audit_logs_screen.dart';
 import 'package:mobile/services/time_service.dart';
 import 'package:mobile/services/data_protection_service.dart';
 import 'package:mobile/services/app_lifecycle_observer.dart';
+import 'package:mobile/services/connectivity_monitor.dart';
 import 'package:mobile/utils/smooth_page_route.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' as fr;
@@ -104,6 +105,14 @@ void main() {
       }
     } catch (e) {
       debugPrint('WorkManager initialization failed: $e');
+    }
+
+    // Initialize connectivity monitoring for offline-first functionality
+    try {
+      await ConnectivityMonitor().initialize();
+      debugPrint('📡 ConnectivityMonitor initialized');
+    } catch (e) {
+      debugPrint('⚠️ ConnectivityMonitor initialization failed: $e');
     }
 
     runApp(MyApp(dataProtectionService: dataProtectionService));

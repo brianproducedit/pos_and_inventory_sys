@@ -181,9 +181,10 @@ class SyncRepository {
       if (store?.serverId != null) {
         data['store_id'] = store!.serverId;
       } else {
-        // Store not synced yet - defer product sync
+        // Store not synced yet - defer product sync by throwing exception
+        // This will be caught and the item will be retried later
         throw Exception(
-            'Product $rowId references unsynced store $localStoreId');
+            'Product $rowId references unsynced store $localStoreId - deferring sync');
       }
     }
 
@@ -1123,6 +1124,8 @@ class SyncRepository {
     }
 
     final changes = <Map<String, dynamic>>[];
+    final validItems = <Map<String, dynamic>>[];
+    
     for (final item in pendingItems) {
       final rawPayload = item['payload'] as String?;
       debugPrint(
@@ -1135,15 +1138,31 @@ class SyncRepository {
       }
 
       final payload = jsonDecode(rawPayload) as Map<String, dynamic>;
-      final change = {
-        'resource_type': payload['resource_type'],
-        'operation': payload['operation'],
-        if (payload.containsKey('temp_id')) 'temp_id': payload['temp_id'],
-        if (payload.containsKey('id')) 'id': payload['id'],
-        'data': payload['data'] ?? {},
-      };
-      changes.add(change);
-      debugPrint('processBatchSyncData: Converted change: $change');
+      
+      try {
+        // Resolve foreign key mappings (e.g., local store_id -> server store_id)
+        final resolvedPayload = await resolveBatchSyncData(
+          item['table_name'] as String,
+          item['row_id'] as int,
+          payload,
+        );
+        
+        final change = {
+          'resource_type': resolvedPayload['resource_type'],
+          'operation': resolvedPayload['operation'],
+          if (resolvedPayload.containsKey('temp_id')) 'temp_id': resolvedPayload['temp_id'],
+          if (resolvedPayload.containsKey('id')) 'id': resolvedPayload['id'],
+          'data': resolvedPayload['data'] ?? {},
+        };
+        changes.add(change);
+        validItems.add(item);
+        debugPrint('processBatchSyncData: Converted change: $change');
+      } catch (e) {
+        debugPrint('processBatchSyncData: Failed to resolve item ${item['id']}: $e');
+        // Mark this item as failed for retry later
+        await _markQueueItemsFailed([item['id'] as int], e.toString());
+        // Continue with other items
+      }
     }
 
     debugPrint(
@@ -1158,13 +1177,13 @@ class SyncRepository {
           'processBatchSyncData: Push successful, applied: ${response['applied']?.length ?? 0}, conflicts: ${response['conflicts']?.length ?? 0}');
 
       // Mark items as synced
-      final queueIds = pendingItems.map((item) => item['id'] as int).toList();
+      final queueIds = validItems.map((item) => item['id'] as int).toList();
       debugPrint(
           'processBatchSyncData: Marking ${queueIds.length} items as synced: $queueIds');
       await _markQueueItemsSynced(queueIds);
 
       // Update last pushed sequence
-      final maxSeq = pendingItems
+      final maxSeq = validItems
           .map((item) => item['client_seq'] as int? ?? 0)
           .reduce((a, b) => a > b ? a : b);
       debugPrint('processBatchSyncData: Updating last pushed seq to $maxSeq');
@@ -1174,8 +1193,8 @@ class SyncRepository {
     } catch (e, stackTrace) {
       debugPrint('processBatchSyncData: Push failed: $e');
       debugPrint('processBatchSyncData: Stack trace: $stackTrace');
-      // Mark items as failed for retry
-      final queueIds = pendingItems.map((item) => item['id'] as int).toList();
+      // Mark successfully resolved items as failed for retry
+      final queueIds = validItems.map((item) => item['id'] as int).toList();
       debugPrint(
           'processBatchSyncData: Marking ${queueIds.length} items as failed: $queueIds');
       await _markQueueItemsFailed(queueIds, e.toString());

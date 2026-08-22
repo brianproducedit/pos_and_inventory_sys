@@ -123,16 +123,18 @@ class SaleRepository extends BaseRepository<Sale> {
 
   /// Get a sale by local ID with its items.
   Future<SaleWithItems?> getSaleWithItems(int saleId) async {
-    final sale = await (db.select(db.sales)..where((s) => s.id.equals(saleId)))
-        .getSingleOrNull();
+    return await _withDatabaseRetry(() async {
+      final sale = await (db.select(db.sales)..where((s) => s.id.equals(saleId)))
+          .getSingleOrNull();
 
-    if (sale == null) return null;
+      if (sale == null) return null;
 
-    final items = await (db.select(db.saleItems)
-          ..where((si) => si.saleId.equals(saleId)))
-        .get();
+      final items = await (db.select(db.saleItems)
+            ..where((si) => si.saleId.equals(saleId)))
+          .get();
 
-    return SaleWithItems(sale: sale, items: items);
+      return SaleWithItems(sale: sale, items: items);
+    });
   }
 
   /// Watch sales for a specific store.
@@ -143,19 +145,23 @@ class SaleRepository extends BaseRepository<Sale> {
 
   /// Get sales for a specific store.
   Future<List<Sale>> getByStore(int storeId) async {
-    return await (db.select(db.sales)..where((s) => s.storeId.equals(storeId)))
-        .get();
+    return await _withDatabaseRetry(() async {
+      return await (db.select(db.sales)..where((s) => s.storeId.equals(storeId)))
+          .get();
+    });
   }
 
   /// Get all sales, optionally filtered by store.
   /// Returns sales sorted by creation date (newest first).
   Future<List<Sale>> getAllSales({int? storeId}) async {
-    final query = db.select(db.sales);
-    if (storeId != null) {
-      query.where((s) => s.storeId.equals(storeId));
-    }
-    query.orderBy([(s) => OrderingTerm.desc(s.createdAt)]);
-    return await query.get();
+    return await _withDatabaseRetry(() async {
+      final query = db.select(db.sales);
+      if (storeId != null) {
+        query.where((s) => s.storeId.equals(storeId));
+      }
+      query.orderBy([(s) => OrderingTerm.desc(s.createdAt)]);
+      return await query.get();
+    });
   }
 
   /// Get sales within a date range.

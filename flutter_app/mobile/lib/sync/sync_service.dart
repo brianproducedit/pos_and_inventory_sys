@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:uuid/uuid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:drift/drift.dart';
+import 'package:http/http.dart' as http;
 import '../db/app_database.dart';
 import '../services/http_client_service.dart';
 
@@ -17,8 +18,12 @@ class SyncService {
       serverBase; // instance-level server base so tests can override it
   static const Uuid _uuid = Uuid();
 
-  SyncService(this.db, {ResilientHttpClient? httpClient, String? serverBase})
-      : httpClient = httpClient ?? ResilientHttpClient(),
+  SyncService(this.db, {dynamic httpClient, String? serverBase})
+      : httpClient = httpClient is ResilientHttpClient
+            ? httpClient
+            : httpClient is http.Client
+                ? ResilientHttpClient(client: httpClient)
+                : ResilientHttpClient(),
         serverBase = serverBase ?? defaultServerBase;
 
   Future<String> enqueueCreateProduct({
